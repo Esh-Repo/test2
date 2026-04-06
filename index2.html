@@ -5,13 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quick Notes</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary: #6200ee;
             --bg: #f5f5f5;
             --danger: #ff1744;
-            --safe: #00c853;
         }
 
         body {
@@ -79,31 +77,22 @@
             list-style: none;
             padding: 0;
             border: 1px solid #eee;
-            max-height: 100px;
+            max-height: 150px;
             overflow-y: auto;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
         }
 
         #device-list li {
-            padding: 8px;
+            padding: 10px;
             border-bottom: 1px solid #eee;
-            font-size: 13px;
+            font-size: 14px;
         }
 
         #map {
-            height: 350px;
+            height: 400px;
             width: 100%;
             border-radius: 12px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            margin-bottom: 15px;
-        }
-
-        .chart-container {
-            background: white;
-            padding: 10px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
 
         .status {
@@ -112,6 +101,7 @@
             margin-top: 5px;
         }
 
+        /* Stalker Alert Style */
         .stalker-alert {
             background: var(--danger);
             color: white;
@@ -122,16 +112,7 @@
             text-align: center;
             animation: blinker 1s linear infinite;
         }
-        @keyframes blinker { 50% { opacity: 0.7; } }
-
-        .safe-zone-info {
-            background: #e8f5e9;
-            border: 1px solid var(--safe);
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
+        @keyframes blinker { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
@@ -143,23 +124,19 @@
         </div>
         <div class="note-card"><strong>Shopping List</strong><br>Milk, Eggs, Bread...</div>
         <div class="note-card"><strong>Project Idea</strong><br>Build a hidden utility app for sensors.</div>
+        <div class="note-card"><strong>Reminder</strong><br>Call Mom at 5 PM.</div>
     </div>
 
     <div id="secret-app">
         <h2>System Diagnostic Mode</h2>
         
         <div id="alert-zone"></div>
-        <div id="safe-zone-display" class="safe-zone-info">Calculating nearest safe zone...</div>
 
         <div class="control-panel">
             <button onclick="scanBluetooth()">Scan Bluetooth</button>
             <button onclick="toggleGPS()" id="gps-btn">Start GPS Tracking</button>
-            <button onclick="activateShield()" id="shield-btn" style="background:var(--safe)">🛡️ Activate Shield</button>
+            <button onclick="activateShield()" id="shield-btn" style="background:#00c853">🛡️ Activate Shield</button>
             <button onclick="location.reload()" style="background:#f44336">Lock App</button>
-        </div>
-
-        <div class="chart-container">
-            <canvas id="rssiChart" height="150"></canvas>
         </div>
 
         <div id="bt-status" class="status">Bluetooth: Idle</div>
@@ -174,6 +151,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
+        // --- Logic to switch apps ---
         const searchBar = document.getElementById('search-bar');
         const notesApp = document.getElementById('notes-app');
         const secretApp = document.getElementById('secret-app');
@@ -183,47 +161,13 @@
                 notesApp.style.display = 'none';
                 secretApp.style.display = 'block';
                 initMap(); 
-                initChart();
             }
         });
 
-        // --- Data & State ---
-        let signals = {}; 
+        // --- Stalker Detection Variables ---
+        let signals = {}; // Stores RSSI history
         let totalDistance = 0;
         let lastPos = null;
-        let rssiChart;
-        let safeZoneMarker;
-        let routeLine;
-
-        // Define your Safe Zones here
-        const safeZones = [
-            { name: "Local Police Station", lat: 51.505, lng: -0.09 }, // Example coords
-            { name: "Safe Haven Mall", lat: 51.51, lng: -0.1 },
-            { name: "Metro Security Hub", lat: 51.501, lng: -0.08 }
-        ];
-
-        // --- Chart Logic ---
-        function initChart() {
-            const ctx = document.getElementById('rssiChart').getContext('2d');
-            rssiChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Live Signal RSSI',
-                        data: [],
-                        borderColor: '#6200ee',
-                        backgroundColor: 'rgba(98, 0, 238, 0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: { y: { suggestedMin: -100, suggestedMax: -20 } }
-                }
-            });
-        }
 
         // --- Bluetooth Logic ---
         async function scanBluetooth() {
@@ -232,11 +176,17 @@
             try {
                 status.innerText = "Bluetooth: Requesting device...";
                 const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
-                list.innerHTML = `<li>Found: ${device.name || 'Unnamed'} (${device.id})</li>`;
+                list.innerHTML = '';
+                const li = document.createElement('li');
+                li.innerText = `Connected to: ${device.name || 'Unnamed Device'} (${device.id})`;
+                list.appendChild(li);
                 status.innerText = "Bluetooth: Device selected.";
-            } catch (error) { status.innerText = "Bluetooth Error: " + error.message; }
+            } catch (error) {
+                status.innerText = "Bluetooth Error: " + error.message;
+            }
         }
 
+        // --- NEW: Passive Stalker Shield Logic ---
         async function activateShield() {
             const status = document.getElementById('bt-status');
             const btn = document.getElementById('shield-btn');
@@ -244,58 +194,51 @@
                 const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
                 btn.innerText = "Shield Active";
                 btn.style.background = "#aaa";
+                status.innerText = "BLE: Scanning for trackers...";
 
                 navigator.bluetooth.addEventListener('advertisementreceived', event => {
                     const deviceId = event.device.id;
                     const rssi = event.rssi;
+
                     if (!signals[deviceId]) signals[deviceId] = [];
-                    signals[deviceId].push({ rssi, time: new Date().toLocaleTimeString().split(' ')[0] });
-                    if (signals[deviceId].length > 15) signals[deviceId].shift();
+                    signals[deviceId].push({ rssi: rssi, time: Date.now() });
+                    if (signals[deviceId].length > 20) signals[deviceId].shift();
 
-                    updateChart(signals[deviceId]);
-                    detectStalker(deviceId, event.device.name || "Tracker");
+                    detectStalker(deviceId, event.device.name || "Unknown Device");
                 });
-            } catch (err) { alert("Check Chrome Flags: Experimental Web Platform must be Enabled."); }
-        }
-
-        function updateChart(history) {
-            rssiChart.data.labels = history.map(h => h.time);
-            rssiChart.data.datasets[0].data = history.map(h => h.rssi);
-            rssiChart.update('none'); // Update without animation for performance
+            } catch (err) {
+                alert("Shield requires Chrome Flags (Experimental Web Platform) enabled.");
+            }
         }
 
         function detectStalker(deviceId, name) {
             const history = signals[deviceId];
-            // Added strict check: Must have 10 data points and actually moved 20m
-            if (history.length < 10 || totalDistance < 20) return;
+            if (history.length < 5 || totalDistance < 20) return;
 
+            // Calculate Variance
             const rssiValues = history.map(h => h.rssi);
             const mean = rssiValues.reduce((a, b) => a + b) / rssiValues.length;
             const variance = rssiValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / rssiValues.length;
 
+            // CORE LOGIC: variance < 5 and distance > 20
             if (variance < 5) {
-                navigator.vibrate([200, 100, 200]);
+                navigator.vibrate([200, 100, 200, 100, 400]);
                 document.getElementById('alert-zone').innerHTML = 
-                    `<div class="stalker-alert">⚠️ SUSPICIOUS SIGNAL: ${name} is following your path!</div>`;
+                    `<div class="stalker-alert">⚠️ Possible tracking device (${name}) moving with you</div>`;
             }
         }
 
-        // --- GPS & Map Logic ---
+        // --- GPS Logic ---
         let map, marker, path, watchId = null;
         let coordsHistory = [];
 
         function initMap() {
             map = L.map('map').setView([51.505, -0.09], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
             marker = L.marker([51.505, -0.09]).addTo(map);
-            path = L.polyline([], {color: 'blue', weight: 3}).addTo(map);
-            routeLine = L.polyline([], {color: 'red', weight: 2, dashArray: '5, 10'}).addTo(map);
-
-            // Draw Safe Zones on map
-            safeZones.forEach(sz => {
-                L.circle([sz.lat, sz.lng], {color: 'green', fillColor: '#0f0', fillOpacity: 0.2, radius: 100}).addTo(map)
-                .bindPopup("Safe Zone: " + sz.name);
-            });
+            path = L.polyline([], {color: 'blue'}).addTo(map);
         }
 
         function toggleGPS() {
@@ -303,26 +246,26 @@
             const status = document.getElementById('gps-status');
 
             if (watchId === null) {
-                btn.innerText = "Stop GPS";
+                if (!navigator.geolocation) { alert("Geolocation not supported"); return; }
+                btn.innerText = "Stop GPS Tracking";
                 btn.style.background = "#ff9800";
+                
                 watchId = navigator.geolocation.watchPosition(
                     (position) => {
-                        const { latitude, longitude } = position.coords;
+                        const { latitude, longitude, accuracy } = position.coords;
                         const newPos = [latitude, longitude];
 
-                        // FIX: Only update if moved more than 2 meters (prevents drift jitter)
-                        let moveDist = lastPos ? calculateDistance(lastPos[0], lastPos[1], latitude, longitude) : 0;
-                        
-                        if (!lastPos || moveDist > 2) {
-                            totalDistance += moveDist;
-                            lastPos = newPos;
-                            marker.setLatLng(newPos);
-                            map.panTo(newPos); // panTo is smoother than setView
-                            coordsHistory.push(newPos);
-                            path.setLatLngs(coordsHistory);
-                            findNearestSafeZone(latitude, longitude);
+                        // Calculate distance moved for stalker logic
+                        if (lastPos) {
+                            totalDistance += calculateDistance(lastPos[0], lastPos[1], latitude, longitude);
                         }
-                        status.innerText = `GPS: Tracking (${Math.round(totalDistance)}m moved)`;
+                        lastPos = newPos;
+
+                        marker.setLatLng(newPos);
+                        map.setView(newPos, 16);
+                        coordsHistory.push(newPos);
+                        path.setLatLngs(coordsHistory);
+                        status.innerText = `GPS: Active (${Math.round(totalDistance)}m moved)`;
                     },
                     (err) => { status.innerText = "GPS Error: " + err.message; },
                     { enableHighAccuracy: true }
@@ -330,28 +273,9 @@
             } else {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
-                btn.innerText = "Start GPS";
+                btn.innerText = "Start GPS Tracking";
                 btn.style.background = "var(--primary)";
-            }
-        }
-
-        function findNearestSafeZone(lat, lng) {
-            let minDest = Infinity;
-            let nearest = null;
-
-            safeZones.forEach(sz => {
-                let d = calculateDistance(lat, lng, sz.lat, sz.lng);
-                if (d < minDest) {
-                    minDest = d;
-                    nearest = sz;
-                }
-            });
-
-            if (nearest) {
-                document.getElementById('safe-zone-display').innerText = 
-                    `Nearest Safe Zone: ${nearest.name} (${Math.round(minDest)}m away)`;
-                // Update red dotted path to safe zone
-                routeLine.setLatLngs([[lat, lng], [nearest.lat, nearest.lng]]);
+                status.innerText = "GPS: Stopped";
             }
         }
 
