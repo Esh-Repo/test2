@@ -79,8 +79,6 @@ body { font-family: var(--sans); background: #f1f5f9; color: var(--text); }
 .alert-why { font-size: 11.5px; color: #9f1239; line-height: 1.75; }
 .alert-why li { margin: 3px 0 3px 16px; }
 .alert-device { font-family: var(--mono); font-size: 10.5px; background: #fff1f2; border: 1px solid #fecdd3; padding: 8px 10px; border-radius: 6px; margin-top: 10px; color: #be123c; line-height: 1.7; }
-.btn-routing { background: #be123c; color: white; width: 100%; margin-top: 12px; padding: 14px; font-size: 12px; font-weight: 800; letter-spacing: .05em; border-radius: 8px; border: none; cursor: pointer; animation: pulse-btn 1.5s infinite; }
-@keyframes pulse-btn { 0%,100%{transform:scale(1)} 50%{transform:scale(0.98)} }
 
 /* STATS */
 .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 7px; margin-bottom: 10px; }
@@ -120,7 +118,6 @@ body { font-family: var(--sans); background: #f1f5f9; color: var(--text); }
 .btn-dk { background: #475569; }
 .btn-s { background: var(--safe); }
 .btn-danger { background: var(--accent); }
-.btn-sos { background: #9f1239; grid-column: span 2; font-size: 13px; padding: 14px; }
 .btn-w { background: var(--warn); grid-column: span 2; }
 
 /* SCANNING BAR */
@@ -212,8 +209,7 @@ body { font-family: var(--sans); background: #f1f5f9; color: var(--text); }
 
     <div class="btn-grid">
       <button class="btn btn-p" id="shield-btn" onclick="toggleScan()">⚡ START SCAN</button>
-      <button class="btn btn-dk" onclick="downloadReport()">📄 DOWNLOAD PDF</button>
-      <button class="btn btn-sos" id="sos-btn" onclick="shareReport()">🚨 SHARE SOS REPORT</button>
+      <button class="btn btn-dk" onclick="generateReport()">📄 PDF REPORT</button>
       <button class="btn btn-s" onclick="initReplay()">🎞️ REPLAY</button>
       <button class="btn btn-danger" onclick="location.reload()">🔒 LOCK</button>
       <button class="btn btn-w" onclick="toggleGuide()">🧭 SAFETY GUIDE</button>
@@ -222,9 +218,10 @@ body { font-family: var(--sans); background: #f1f5f9; color: var(--text); }
     <div class="guide-box" id="guide-box">
       <div class="guide-close-row"><button class="guide-close-btn" onclick="document.getElementById('guide-box').style.display='none'">✕ Close</button></div>
       <div class="guide-title">🧭 What To Do Right Now</div>
-      <div class="guide-step"><span class="guide-step-icon">📲</span><span>Tap "SHARE SOS REPORT" to instantly WhatsApp your GPS and forensic PDF to an emergency contact.</span></div>
-      <div class="guide-step"><span class="guide-step-icon">🏥</span><span>Tap the "ROUTE TO SAFE HAVEN" button above to navigate to the nearest police station or hospital.</span></div>
-      <div class="guide-step"><span class="guide-step-icon">👮</span><span>Show security or police this screen. The generated PDF acts as admissible digital evidence.</span></div>
+      <div class="guide-step"><span class="guide-step-icon">🏬</span><span>Move immediately to a crowded public place — a mall, metro station, or busy street.</span></div>
+      <div class="guide-step"><span class="guide-step-icon">👮</span><span>Find security or police. Show them this screen and the PDF report as digital evidence.</span></div>
+      <div class="guide-step"><span class="guide-step-icon">📞</span><span>Call a trusted contact and share your live location immediately.</span></div>
+      <div class="guide-step"><span class="guide-step-icon">📄</span><span>Tap PDF REPORT now — it instantly saves your GPS path, RSSI timeline, and device fingerprint.</span></div>
       <div class="guide-step"><span class="guide-step-icon">🔒</span><span>Type 1234 in notes to activate Stealth Mode if you feel unsafe being seen using this app.</span></div>
     </div>
 
@@ -266,20 +263,11 @@ let deviceRegistry = {};
 let chart, leafMap, userMarker, userPath;
 let replayPathLayer = null, replayMarker = null, replayInterval = null, replayIndex = 0;
 let stealthTaps = 0;
-let userBattery = 'Unknown';
 
 // Scan State
 let isScanning = false;
 let activeLeScan = null;
 let manualProbeTimeout = null;
-
-// ── GET BATTERY ──
-if (navigator.getBattery) {
-    navigator.getBattery().then(batt => {
-        userBattery = Math.round(batt.level * 100) + '%';
-        batt.addEventListener('levelchange', () => { userBattery = Math.round(batt.level * 100) + '%'; });
-    });
-}
 
 // ── UNLOCK & STEALTH ──
 document.getElementById('search-bar').addEventListener('input', e => {
@@ -341,6 +329,7 @@ function initDashboard() {
 // ── GPS & DISTANCE TRACKING ──
 function startGPS() {
   navigator.geolocation.watchPosition(pos => {
+    // Filter out highly inaccurate GPS jumps (e.g., cell tower triangulation jumps)
     if (pos.coords.accuracy > 40) return; 
 
     const cur = [pos.coords.latitude, pos.coords.longitude];
@@ -348,13 +337,17 @@ function startGPS() {
 
     if (lastPos) {
       const d = calcDist(lastPos[0], lastPos[1], cur[0], cur[1]);
-      if (d > 1.5) { 
+      if (d > 1.5) { // Minimum threshold to count as movement
         totalDist += d;
         document.getElementById('stat-dist').innerText = Math.round(totalDist) + 'm';
         userPath.addLatLng(cur);
 
+        // Track how far the user has moved WHILE a specific device is nearby
         Object.values(deviceRegistry).forEach(dev => {
-          if (now - dev.lastSeen < 30000) dev.trackedDist = (dev.trackedDist || 0) + d;
+          // If the device has been seen within the last 30 seconds, it's moving with us
+          if (now - dev.lastSeen < 30000) {
+            dev.trackedDist = (dev.trackedDist || 0) + d;
+          }
         });
       }
     }
@@ -459,13 +452,14 @@ function ingestDevice(name, rssi, txPower) {
       firstSeen: now, lastSeen: now, lastLogTime: 0,
       readings: [], firstPos: lastPos ? [...lastPos] : null,
       isSuspect: false, suspectReasons: null, emaRssi: rssi,
-      trackedDist: 0 
+      trackedDist: 0 // New metric: How far it followed
     };
   }
   const dev = deviceRegistry[name];
   dev.lastSeen = now;
   
-  const alpha = 0.15; 
+  // Smoothing
+  const alpha = 0.15; // Slightly heavier smoothing for stability
   dev.emaRssi = (rssi * alpha) + (dev.emaRssi * (1 - alpha));
   const smoothedRssi = Math.round(dev.emaRssi);
   dev.lastRSSI = smoothedRssi;
@@ -477,6 +471,7 @@ function ingestDevice(name, rssi, txPower) {
   const distEst = Math.pow(10, (tx - smoothedRssi) / (10 * 2.0)).toFixed(1);
   const proximity = rssiToProximity(smoothedRssi);
 
+  // ── INTELLIGENT STALKING RULES ──
   const durationMs  = now - dev.firstSeen;
   const durationMin = durationMs / 60000;
   const variance    = calcVariance(dev.readings.map(r => r.rssi));
@@ -486,6 +481,7 @@ function ingestDevice(name, rssi, txPower) {
   const isTargetWatch = name.toLowerCase().includes('fb');
   if (isTargetWatch && durationMin >= 0.1) reasons.push(`⚠️ Device matches known threat signature. Immediate flagging.`);
   
+  // Accurate Stalked Distance rule
   if (dev.trackedDist > 15) reasons.push(`Physically followed you for ${Math.round(dev.trackedDist)} meters`);
   if (durationMin >= 1.0) reasons.push(`Present continuously for ${durationMin.toFixed(1)} minutes`);
   if (dev.readings.length >= 10 && variance < 12) reasons.push(`Signal variance highly constrained (${variance.toFixed(1)} dBm²) — moving synchronously`);
@@ -501,6 +497,7 @@ function ingestDevice(name, rssi, txPower) {
 
   if (smoothedRssi > -55 && navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
+  // Logging
   const logInterval = dev.isSuspect ? 2000 : 4000;
   if (now - dev.lastLogTime > logInterval) {
       forensicLog.push({
@@ -512,6 +509,7 @@ function ingestDevice(name, rssi, txPower) {
       renderPathPanel();
   }
 
+  // Chart Update
   const anySuspect = Object.values(deviceRegistry).some(d => d.isSuspect);
   if (!anySuspect || dev.isSuspect) {
     const label = new Date(now).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -522,6 +520,7 @@ function ingestDevice(name, rssi, txPower) {
     chart.update('none');
   }
 
+  // Map Drawing
   if (dev.isSuspect && lastPos && lastPos[0] !== 0) {
     if (!dev.lastDrawnPos || calcDist(lastPos[0], lastPos[1], dev.lastDrawnPos[0], dev.lastDrawnPos[1]) > 5) {
         L.circleMarker(lastPos, { radius: 6, color: '#e11d48', fillColor: '#e11d48', fillOpacity: .6, weight: 1 })
@@ -530,6 +529,7 @@ function ingestDevice(name, rssi, txPower) {
     }
   }
 
+  // UI Stats Updates
   document.getElementById('stat-dev').innerText = Object.keys(deviceRegistry).length;
   document.getElementById('stat-sus').innerText = Object.values(deviceRegistry).filter(d => d.isSuspect).length;
   document.getElementById('stat-dur').innerText = Math.round((now - sessionStart) / 60000) + 'm';
@@ -547,15 +547,6 @@ function rssiToProximity(r) {
   return                '🟢 Far (>10m)';
 }
 
-// ── SAFE HAVEN ROUTING ──
-function routeToSafeHaven() {
-    if(lastPos) {
-        window.open(`https://www.google.com/maps/search/police+station+or+hospital+near+${lastPos[0]},${lastPos[1]}`, '_blank');
-    } else {
-        window.open(`https://www.google.com/maps/search/police+station+near+me`, '_blank');
-    }
-}
-
 // ── UI ALERTS & UPDATES ──
 function showForensicAlert(name, reasons, durationMin, avgRSSI, proximity, stalkDist) {
   const loc = lastPos ? `${lastPos[0].toFixed(5)}, ${lastPos[1].toFixed(5)}` : 'Acquiring GPS…';
@@ -564,7 +555,6 @@ function showForensicAlert(name, reasons, durationMin, avgRSSI, proximity, stalk
       <div class="alert-title">⚠️ COVERT TRACKING DETECTED</div>
       <div class="alert-why"><b>Forensic Evidence:</b><ul>${reasons.map(r => `<li>${r}</li>`).join('')}</ul></div>
       <div class="alert-device">DEVICE  : ${name}\nAVG RSSI: ${Math.round(avgRSSI)} dBm\nSTALKED : ${Math.round(stalkDist)} meters\nGPS     : ${loc}</div>
-      <button class="btn-routing" onclick="routeToSafeHaven()">🏥 ROUTE TO NEAREST SAFE HAVEN</button>
     </div>`;
   document.getElementById('guide-box').style.display = 'block';
   if (navigator.vibrate) navigator.vibrate([300,100,300,100,500]);
@@ -607,17 +597,22 @@ function renderPathPanel() {
   }).join('');
 }
 
-// ── REPLAY SYSTEM ──
+// ── REPLAY SYSTEM (Enhanced) ──
 function initReplay() {
   if (forensicLog.length < 2) { alert('Not enough data yet. Move around with the scanner active.'); return; }
+  
   forensicLog.sort((a,b) => a.time - b.time);
   document.getElementById('replay-panel').style.display = 'block';
+  
   const slider = document.getElementById('timeline-slider');
   slider.max = forensicLog.length - 1; slider.value = 0; replayIndex = 0;
+  
   if (replayPathLayer) leafMap.removeLayer(replayPathLayer);
   if (replayMarker) leafMap.removeLayer(replayMarker);
+  
   replayPathLayer = L.polyline([], { color: '#6d28d9', dashArray: '5,10', weight: 4, opacity: 0.8 }).addTo(leafMap);
   replayMarker = L.circleMarker([0,0], { radius: 8, color: '#fff', fillColor: '#6d28d9', fillOpacity: 1, weight: 2 });
+  
   seekTo(0);
 }
 
@@ -625,18 +620,25 @@ function seekTo(idx) {
   idx = Math.max(0, Math.min(idx, forensicLog.length - 1));
   replayIndex = idx;
   const e = forensicLog[idx];
+  
   if (e.lat !== 0) { 
     replayMarker.setLatLng([e.lat, e.lng]).addTo(leafMap);
     leafMap.panTo([e.lat, e.lng]); 
   }
-  if (replayPathLayer) replayPathLayer.setLatLngs(forensicLog.slice(0, idx+1).filter(p => p.lat !== 0).map(p => [p.lat, p.lng]));
+  
+  if (replayPathLayer) {
+      replayPathLayer.setLatLngs(forensicLog.slice(0, idx+1).filter(p => p.lat !== 0).map(p => [p.lat, p.lng]));
+  }
+
   document.getElementById('timeline-slider').value = idx;
   document.getElementById('replay-time').innerText = '🕐 ' + new Date(e.time).toLocaleTimeString('en-IN');
   document.getElementById('replay-pt').innerText = `Point ${idx+1}/${forensicLog.length}`;
   document.getElementById('replay-rssi-lbl').innerText = `${e.rssi} dBm ${e.isSuspicious ? '⚠️' : '✓'}`;
   document.getElementById('replay-dist').innerText = `Stalked: ${e.trackedDistSnapshot || 0}m`;
 }
+
 document.getElementById('timeline-slider').addEventListener('input', e => { pauseReplay(); seekTo(parseInt(e.target.value)); });
+
 function playReplay() {
   if (replayInterval) clearInterval(replayInterval);
   if (replayIndex >= forensicLog.length - 1) replayIndex = 0;
@@ -646,14 +648,20 @@ function playReplay() {
   }, 350);
 }
 function pauseReplay() { if (replayInterval) { clearInterval(replayInterval); replayInterval = null; } }
-function resetReplay() { pauseReplay(); replayIndex = 0; if (replayPathLayer) replayPathLayer.setLatLngs([]); if (replayMarker) leafMap.removeLayer(replayMarker); seekTo(0); }
+function resetReplay() { 
+    pauseReplay(); replayIndex = 0; 
+    if (replayPathLayer) replayPathLayer.setLatLngs([]); 
+    if (replayMarker) leafMap.removeLayer(replayMarker);
+    seekTo(0); 
+}
 
-// ── INTELLIGENT PDF REPORT GENERATOR ──
-async function buildPdfDocument() {
+// ── INSTANT SNAPSHOT PDF REPORT ──
+async function generateReport() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const now = new Date();
   
+  // 1. FREEZE DATA (Instant Snapshot)
   const reportTime = Date.now();
   const pdfLogData = forensicLog.filter(e => e.time <= reportTime && e.isSuspicious);
   const snapRegistry = JSON.parse(JSON.stringify(deviceRegistry));
@@ -661,7 +669,7 @@ async function buildPdfDocument() {
 
   const bg = (d) => { d.setFillColor(248,250,252); d.rect(0,0,210,297,'F'); };
 
-  // PAGE 1: SUMMARY & DIRECTIVES
+  // PAGE 1: SUMMARY
   bg(doc);
   doc.setTextColor(15,23,42);
   doc.setFontSize(17); doc.setFont('helvetica','bold');
@@ -670,31 +678,20 @@ async function buildPdfDocument() {
   doc.text('Forensic Shield Data Export  |  ' + now.toLocaleString('en-IN'), 15, 30);
   doc.setDrawColor(203,213,225); doc.line(15,34,195,34);
 
-  // Law Enforcement Directive
-  doc.setFillColor(254,242,242); doc.rect(15, 38, 180, 25, 'F');
-  doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(159,18,57);
-  doc.text('LAW ENFORCEMENT DIRECTIVE', 18, 45);
-  doc.setFont('helvetica','normal'); doc.setFontSize(8);
-  doc.text('This digital document constitutes timestamped evidence of covert electronic stalking.', 18, 51);
-  doc.text('It contains MAC addresses, RSSI variance, and synchronous GPS path overlays.', 18, 56);
-  if(lastPos) {
-      doc.setFont('helvetica','bold'); doc.setTextColor(37,99,235);
-      doc.text(`Live GPS Anchor: https://maps.google.com/?q=${lastPos[0]},${lastPos[1]}`, 18, 61);
-  }
-
   doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
-  doc.text('INCIDENT SUMMARY', 15, 75);
+  doc.text('INCIDENT SUMMARY', 15, 44);
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(15,23,42);
-  doc.text(`Total Distance Moved  : ${Math.round(totalDist)} m`, 15, 85);
-  doc.text(`Session Duration      : ${Math.round((reportTime-sessionStart)/60000)} minutes`, 15, 92);
-  doc.text(`Device Battery Level  : ${userBattery}`, 15, 99);
-  doc.text(`Suspects Identified   : ${suspects.length}`, 15, 106);
+  doc.text(`Total Distance Moved  : ${Math.round(totalDist)} m`, 15, 54);
+  doc.text(`Session Duration      : ${Math.round((reportTime-sessionStart)/60000)} minutes`, 15, 61);
+  doc.text(`Total Devices Scanned : ${Object.keys(snapRegistry).length}`, 15, 68);
+  doc.text(`Suspects Identified   : ${suspects.length}`, 15, 75);
+  doc.text(`Critical Events Logged: ${pdfLogData.length} (Filtered snapshot)`, 15, 82);
 
   if (suspects.length > 0) {
-    doc.setDrawColor(225,29,72); doc.line(15,116,195,116);
+    doc.setDrawColor(225,29,72); doc.line(15,96,195,96);
     doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(225,29,72);
-    doc.text('SUSPECT DEVICE FORENSIC PROFILES', 15, 126);
-    let sy = 135;
+    doc.text('SUSPECT DEVICE FORENSIC PROFILES', 15, 106);
+    let sy = 115;
     suspects.forEach(([name, dev]) => {
       if(sy > 260) { doc.addPage(); bg(doc); sy=15; }
       const dur = Math.round((dev.lastSeen-dev.firstSeen)/60000);
@@ -711,6 +708,9 @@ async function buildPdfDocument() {
       }
       sy+=8;
     });
+  } else {
+    doc.setTextColor(100,116,139);
+    doc.text('No suspicious tracking devices identified during this session.', 15, 106);
   }
 
   // PAGE 2: TIMELINE & FILTERED LOG
@@ -746,51 +746,14 @@ async function buildPdfDocument() {
 
   // PAGE 3: MAP
   leafMap.invalidateSize();
-  const canvas = await html2canvas(document.getElementById('map'), { useCORS: true, scale: 2 });
-  doc.addPage(); bg(doc);
-  doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
-  doc.text('GPS MOVEMENT MAP WITH TRACKING OVERLAY', 15, 15);
-  doc.addImage(canvas.toDataURL('image/png'),'PNG',10,22,190,135);
-  
-  return doc;
-}
-
-async function downloadReport() {
-    const doc = await buildPdfDocument();
-    doc.save('ForensicShield_' + new Date().toISOString().slice(0,10) + '.pdf');
-}
-
-// ── NATIVE SOS SHARE API ──
-async function shareReport() {
-    const btn = document.getElementById('sos-btn');
-    const originalText = btn.innerText;
-    btn.innerText = "⏳ GENERATING REPORT...";
-    
-    try {
-        const doc = await buildPdfDocument();
-        const pdfBlob = doc.output('blob');
-        const file = new File([pdfBlob], "ForensicShield_Alert.pdf", { type: "application/pdf" });
-        const locText = lastPos ? `https://maps.google.com/?q=${lastPos[0]},${lastPos[1]}` : 'Unknown';
-        const emergencyText = `🚨 EMERGENCY: I am being tracked by a covert device. My last live GPS location is: ${locText}\n\nAttached is the digital forensic evidence.`;
-
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-                title: '🚨 EMERGENCY: Covert Tracking Detected',
-                text: emergencyText,
-                files: [file]
-            });
-        } else {
-            // Fallback for desktop or non-HTTPS
-            doc.save('ForensicShield_Alert.pdf');
-            alert("Native sharing unavailable. The PDF has been downloaded.\nAn email template will now open.");
-            window.location.href = `mailto:?subject=EMERGENCY TRACKING ALERT&body=${encodeURIComponent(emergencyText + "\n\nPlease find the downloaded ForensicShield_Alert.pdf on my device.")}`;
-        }
-    } catch (e) {
-        console.error(e);
-        alert("An error occurred while generating the SOS report.");
-    } finally {
-        btn.innerText = originalText;
-    }
+  // Fast map render using html2canvas immediately (no heavy arbitrary timeout)
+  html2canvas(document.getElementById('map'), { useCORS: true, scale: 2 }).then(canvas => {
+    doc.addPage(); bg(doc);
+    doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
+    doc.text('GPS MOVEMENT MAP WITH TRACKING OVERLAY', 15, 15);
+    doc.addImage(canvas.toDataURL('image/png'),'PNG',10,22,190,135);
+    doc.save('ForensicShield_' + now.toISOString().slice(0,10) + '.pdf');
+  });
 }
 
 // ── HELPERS ──
