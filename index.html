@@ -5,364 +5,262 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quick Notes</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
     <style>
-        :root {
-            --primary: #6200ee;
-            --bg: #f5f5f5;
-            --danger: #ff1744;
-            --safe: #00c853;
-        }
+        :root { --primary: #6200ee; --bg: #f5f5f5; --danger: #ff1744; --safe: #00c853; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); overflow-x: hidden; }
+        
+        /* Notes UI */
+        #notes-app { display: block; padding: 20px; }
+        #search-bar { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ddd; font-size: 16px; }
+        .note-card { background: white; padding: 15px; border-radius: 8px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            background: var(--bg);
-            transition: all 0.3s ease;
-        }
+        /* Secret Utility UI */
+        #secret-app { display: none; padding: 15px; background: #0f172a; color: #f8fafc; min-height: 100vh; }
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: #1e293b; padding: 10px; border-radius: 8px; border-left: 4px solid var(--primary); }
+        .stat-card h5 { margin: 0; font-size: 10px; text-transform: uppercase; color: #94a3b8; }
+        .stat-card p { margin: 5px 0 0; font-size: 18px; font-weight: bold; }
 
-        /* --- Notes UI (The Cover) --- */
-        #notes-app {
-            display: block;
-            padding: 20px;
-        }
+        .control-panel { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; background: var(--primary); }
+        .btn-danger { background: var(--danger); }
+        .btn-success { background: var(--safe); }
 
-        .search-container {
-            margin-bottom: 20px;
-        }
+        #alert-zone { margin-bottom: 10px; }
+        .alert-box { background: var(--danger); color: white; padding: 12px; border-radius: 6px; font-weight: bold; text-align: center; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
 
-        #search-bar {
-            width: 100%;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            box-sizing: border-box;
-            font-size: 16px;
-        }
-
-        .note-card {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        /* --- Secret UI (The Tools) --- */
-        #secret-app {
-            display: none;
-            padding: 20px;
-            background: #fff;
-            min-height: 100vh;
-        }
-
-        .control-panel {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        button {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 5px;
-            background: var(--primary);
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        button:active { transform: scale(0.98); }
-
-        #device-list {
-            list-style: none;
-            padding: 0;
-            border: 1px solid #eee;
-            max-height: 100px;
-            overflow-y: auto;
-            margin-bottom: 10px;
-        }
-
-        #device-list li {
-            padding: 8px;
-            border-bottom: 1px solid #eee;
-            font-size: 13px;
-        }
-
-        #map {
-            height: 350px;
-            width: 100%;
-            border-radius: 12px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            margin-bottom: 15px;
-        }
-
-        .chart-container {
-            background: white;
-            padding: 10px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-
-        .status {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
-        }
-
-        .stalker-alert {
-            background: var(--danger);
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            font-weight: bold;
-            text-align: center;
-            animation: blinker 1s linear infinite;
-        }
-        @keyframes blinker { 50% { opacity: 0.7; } }
-
-        .safe-zone-info {
-            background: #e8f5e9;
-            border: 1px solid var(--safe);
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
+        .viz-container { background: #1e293b; border-radius: 12px; padding: 10px; margin-bottom: 15px; }
+        #map { height: 300px; width: 100%; border-radius: 8px; margin-top: 10px; }
+        canvas { max-height: 150px; }
     </style>
 </head>
 <body>
 
     <div id="notes-app">
         <h2>My Notes</h2>
-        <div class="search-container">
-            <input type="text" id="search-bar" placeholder="Search notes...">
-        </div>
-        <div class="note-card"><strong>Shopping List</strong><br>Milk, Eggs, Bread...</div>
-        <div class="note-card"><strong>Project Idea</strong><br>Build a hidden utility app for sensors.</div>
+        <input type="text" id="search-bar" placeholder="Search notes...">
+        <div class="note-card"><strong>Hackathon To-do</strong><br>Finish Forensic PDF export.</div>
+        <div class="note-card"><strong>Grocery</strong><br>Buy protein bars and coffee.</div>
     </div>
 
-    <div id="secret-app">
-        <h2>System Diagnostic Mode</h2>
+    <div id="secret-app" id="report-content">
+        <h3 style="margin-top:0; color:var(--safe)">🛡️ Forensic Shield v3.0</h3>
         
         <div id="alert-zone"></div>
-        <div id="safe-zone-display" class="safe-zone-info">Calculating nearest safe zone...</div>
+
+        <div class="dashboard">
+            <div class="stat-card"><h5>Distance</h5><p id="stat-dist">0m</p></div>
+            <div class="stat-card"><h5>Target</h5><p id="stat-target">Scanning...</p></div>
+        </div>
 
         <div class="control-panel">
-            <button onclick="scanBluetooth()">Scan Bluetooth</button>
-            <button onclick="toggleGPS()" id="gps-btn">Start GPS Tracking</button>
-            <button onclick="activateShield()" id="shield-btn" style="background:var(--safe)">🛡️ Activate Shield</button>
-            <button onclick="location.reload()" style="background:#f44336">Lock App</button>
+            <button onclick="startFullShield()" id="shield-btn">⚡ ACTIVATE SHIELD</button>
+            <button class="btn-success" onclick="generateForensicReport()">📄 GEN REPORT</button>
+            <button class="btn-danger" onclick="location.reload()">🔒 LOCK</button>
         </div>
 
-        <div class="chart-container">
-            <canvas id="rssiChart" height="150"></canvas>
+        <div class="viz-container">
+            <canvas id="rssiChart"></canvas>
         </div>
 
-        <div id="bt-status" class="status">Bluetooth: Idle</div>
-        <ul id="device-list">
-            <li>No devices found yet.</li>
-        </ul>
-
-        <div id="gps-status" class="status">GPS: Off</div>
         <div id="map"></div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <script>
-        const searchBar = document.getElementById('search-bar');
-        const notesApp = document.getElementById('notes-app');
-        const secretApp = document.getElementById('secret-app');
+        // --- CONFIG & STATE ---
+        const TARGET_NAME_FILTER = "FB"; // Targets smartwatches with "FB" in name
+        let isShieldActive = false;
+        let totalDistanceMoved = 0;
+        let lastCoord = null;
+        let signalData = []; // Store logs for PDF
+        let rssiHistory = []; 
+        let map, marker, path, chart;
 
-        searchBar.addEventListener('input', (e) => {
+        // --- SECRET ACCESS ---
+        document.getElementById('search-bar').addEventListener('input', (e) => {
             if (e.target.value === '6426') {
-                notesApp.style.display = 'none';
-                secretApp.style.display = 'block';
-                initMap(); 
+                document.getElementById('notes-app').style.display = 'none';
+                document.getElementById('secret-app').style.display = 'block';
+                initMap();
                 initChart();
             }
         });
 
-        // --- Data & State ---
-        let signals = {}; 
-        let totalDistance = 0;
-        let lastPos = null;
-        let rssiChart;
-        let safeZoneMarker;
-        let routeLine;
+        // --- INITIALIZATION ---
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([0,0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { crossOrigin: true }).addTo(map);
+            marker = L.marker([0,0]).addTo(map);
+            path = L.polyline([], {color: '#00e676', weight: 4}).addTo(map);
 
-        // Define your Safe Zones here
-        const safeZones = [
-            { name: "Local Police Station", lat: 51.505, lng: -0.09 }, // Example coords
-            { name: "Safe Haven Mall", lat: 51.51, lng: -0.1 },
-            { name: "Metro Security Hub", lat: 51.501, lng: -0.08 }
-        ];
+            // Auto-locate on launch
+            navigator.geolocation.getCurrentPosition(p => {
+                const pos = [p.coords.latitude, p.coords.longitude];
+                map.setView(pos, 16);
+                marker.setLatLng(pos);
+            });
+        }
 
-        // --- Chart Logic ---
         function initChart() {
             const ctx = document.getElementById('rssiChart').getContext('2d');
-            rssiChart = new Chart(ctx, {
+            chart = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Live Signal RSSI',
-                        data: [],
-                        borderColor: '#6200ee',
-                        backgroundColor: 'rgba(98, 0, 238, 0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: { y: { suggestedMin: -100, suggestedMax: -20 } }
-                }
+                data: { labels: [], datasets: [{ label: 'Target RSSI', data: [], borderColor: '#00e676', tension: 0.4 }] },
+                options: { responsive: true, scales: { y: { min: -100, max: -30 } } }
             });
         }
 
-        // --- Bluetooth Logic ---
-        async function scanBluetooth() {
-            const list = document.getElementById('device-list');
-            const status = document.getElementById('bt-status');
+        // --- CORE LOGIC ---
+        async function startFullShield() {
             try {
-                status.innerText = "Bluetooth: Requesting device...";
-                const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
-                list.innerHTML = `<li>Found: ${device.name || 'Unnamed'} (${device.id})</li>`;
-                status.innerText = "Bluetooth: Device selected.";
-            } catch (error) { status.innerText = "Bluetooth Error: " + error.message; }
-        }
-
-        async function activateShield() {
-            const status = document.getElementById('bt-status');
-            const btn = document.getElementById('shield-btn');
-            try {
+                // 1. Bluetooth Scan
                 const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
-                btn.innerText = "Shield Active";
-                btn.style.background = "#aaa";
+                isShieldActive = true;
+                document.getElementById('shield-btn').innerText = "SHIELD ON";
+                document.getElementById('shield-btn').style.background = "#334155";
 
                 navigator.bluetooth.addEventListener('advertisementreceived', event => {
-                    const deviceId = event.device.id;
+                    const name = event.device.name || "Unknown";
                     const rssi = event.rssi;
-                    if (!signals[deviceId]) signals[deviceId] = [];
-                    signals[deviceId].push({ rssi, time: new Date().toLocaleTimeString().split(' ')[0] });
-                    if (signals[deviceId].length > 15) signals[deviceId].shift();
 
-                    updateChart(signals[deviceId]);
-                    detectStalker(deviceId, event.device.name || "Tracker");
+                    // Filter for specific device (Smartwatch FB)
+                    if (name.toUpperCase().includes(TARGET_NAME_FILTER)) {
+                        handleTargetDevice(name, rssi);
+                    }
                 });
-            } catch (err) { alert("Check Chrome Flags: Experimental Web Platform must be Enabled."); }
-        }
 
-        function updateChart(history) {
-            rssiChart.data.labels = history.map(h => h.time);
-            rssiChart.data.datasets[0].data = history.map(h => h.rssi);
-            rssiChart.update('none'); // Update without animation for performance
-        }
+                // 2. GPS Start
+                startGPSTracking();
 
-        function detectStalker(deviceId, name) {
-            const history = signals[deviceId];
-            // Added strict check: Must have 10 data points and actually moved 20m
-            if (history.length < 10 || totalDistance < 20) return;
-
-            const rssiValues = history.map(h => h.rssi);
-            const mean = rssiValues.reduce((a, b) => a + b) / rssiValues.length;
-            const variance = rssiValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / rssiValues.length;
-
-            if (variance < 5) {
-                navigator.vibrate([200, 100, 200]);
-                document.getElementById('alert-zone').innerHTML = 
-                    `<div class="stalker-alert">⚠️ SUSPICIOUS SIGNAL: ${name} is following your path!</div>`;
+            } catch (err) {
+                alert("Enable 'Experimental Web Platform Features' in chrome://flags");
             }
         }
 
-        // --- GPS & Map Logic ---
-        let map, marker, path, watchId = null;
-        let coordsHistory = [];
+        function handleTargetDevice(name, rssi) {
+            document.getElementById('stat-target').innerText = `${name} (${rssi})`;
+            
+            // Proximity Vibration
+            if (rssi > -50) navigator.vibrate([300, 100, 300]);
+            else if (rssi > -65) navigator.vibrate([100]);
 
-        function initMap() {
-            map = L.map('map').setView([51.505, -0.09], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-            marker = L.marker([51.505, -0.09]).addTo(map);
-            path = L.polyline([], {color: 'blue', weight: 3}).addTo(map);
-            routeLine = L.polyline([], {color: 'red', weight: 2, dashArray: '5, 10'}).addTo(map);
+            // Chart Update
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            rssiHistory.push(rssi);
+            if(rssiHistory.length > 20) rssiHistory.shift();
+            chart.data.labels.push(time);
+            if(chart.data.labels.length > 20) chart.data.labels.shift();
+            chart.update('none');
 
-            // Draw Safe Zones on map
-            safeZones.forEach(sz => {
-                L.circle([sz.lat, sz.lng], {color: 'green', fillColor: '#0f0', fillOpacity: 0.2, radius: 100}).addTo(map)
-                .bindPopup("Safe Zone: " + sz.name);
-            });
-        }
+            // Log data for Forensic Report
+            signalData.push({ time, rssi, lat: lastCoord ? lastCoord[0] : 0, lng: lastCoord ? lastCoord[1] : 0 });
 
-        function toggleGPS() {
-            const btn = document.getElementById('gps-btn');
-            const status = document.getElementById('gps-status');
-
-            if (watchId === null) {
-                btn.innerText = "Stop GPS";
-                btn.style.background = "#ff9800";
-                watchId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        const { latitude, longitude } = position.coords;
-                        const newPos = [latitude, longitude];
-
-                        // FIX: Only update if moved more than 2 meters (prevents drift jitter)
-                        let moveDist = lastPos ? calculateDistance(lastPos[0], lastPos[1], latitude, longitude) : 0;
-                        
-                        if (!lastPos || moveDist > 2) {
-                            totalDistance += moveDist;
-                            lastPos = newPos;
-                            marker.setLatLng(newPos);
-                            map.panTo(newPos); // panTo is smoother than setView
-                            coordsHistory.push(newPos);
-                            path.setLatLngs(coordsHistory);
-                            findNearestSafeZone(latitude, longitude);
-                        }
-                        status.innerText = `GPS: Tracking (${Math.round(totalDistance)}m moved)`;
-                    },
-                    (err) => { status.innerText = "GPS Error: " + err.message; },
-                    { enableHighAccuracy: true }
-                );
-            } else {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-                btn.innerText = "Start GPS";
-                btn.style.background = "var(--primary)";
-            }
-        }
-
-        function findNearestSafeZone(lat, lng) {
-            let minDest = Infinity;
-            let nearest = null;
-
-            safeZones.forEach(sz => {
-                let d = calculateDistance(lat, lng, sz.lat, sz.lng);
-                if (d < minDest) {
-                    minDest = d;
-                    nearest = sz;
+            // Stalker Detection Logic (Variance check)
+            if (totalDistanceMoved > 20 && rssiHistory.length > 10) {
+                const variance = calcVariance(rssiHistory);
+                if (variance < 6) { // Stable signal while user is moving = suspicious
+                    triggerAlert(name);
                 }
-            });
-
-            if (nearest) {
-                document.getElementById('safe-zone-display').innerText = 
-                    `Nearest Safe Zone: ${nearest.name} (${Math.round(minDest)}m away)`;
-                // Update red dotted path to safe zone
-                routeLine.setLatLngs([[lat, lng], [nearest.lat, nearest.lng]]);
             }
         }
 
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; 
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
-                      Math.sin(dLon/2) * Math.sin(dLon/2);
+        function startGPSTracking() {
+            navigator.geolocation.watchPosition(p => {
+                const { latitude, longitude, accuracy } = p.coords;
+                if (accuracy > 30) return; // Ignore poor signals to prevent map jumping
+
+                const newPos = [latitude, longitude];
+                if (lastCoord) {
+                    const dist = calcDist(lastCoord[0], lastCoord[1], latitude, longitude);
+                    if (dist > 3) { // Drift Filter: Ignore movements < 3m
+                        totalDistanceMoved += dist;
+                        document.getElementById('stat-dist').innerText = Math.round(totalDistanceMoved) + "m";
+                        path.addLatLng(newPos);
+                    }
+                }
+                lastCoord = newPos;
+                marker.setLatLng(newPos);
+                map.panTo(newPos);
+            }, null, { enableHighAccuracy: true });
+        }
+
+        // --- FORENSIC REPORT GENERATOR ---
+        async function generateForensicReport() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const timestamp = new Date().toLocaleString();
+
+            // Section 1: Header
+            doc.setFontSize(22);
+            doc.setTextColor(98, 0, 238);
+            doc.text("FORENSIC PROXIMITY REPORT", 10, 20);
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generated: ${timestamp}`, 10, 28);
+            doc.text(`Target Device: Smartwatch (${TARGET_NAME_FILTER} filter)`, 10, 34);
+
+            // Section 2: Summary
+            doc.setFontSize(14);
+            doc.setTextColor(0);
+            doc.text("Incident Summary", 10, 50);
+            doc.setFontSize(10);
+            doc.text(`- Total Distance Traveled: ${Math.round(totalDistanceMoved)} meters`, 10, 60);
+            doc.text(`- Conclusion: Persistent signal detected during movement. Possible tracking device.`, 10, 66);
+
+            // Section 3: Signal Chart Capture
+            const chartCanvas = document.getElementById('rssiChart');
+            const chartImg = chartCanvas.toDataURL("image/png");
+            doc.text("Signal Strength History (RSSI)", 10, 80);
+            doc.addImage(chartImg, 'PNG', 10, 85, 180, 50);
+
+            // Section 4: Hash (Proof of integrity)
+            const logHash = await generateHash(JSON.stringify(signalData));
+            doc.text("Forensic Hash (SHA-256):", 10, 150);
+            doc.setFontSize(8);
+            doc.text(logHash, 10, 156);
+
+            // Section 5: Map Capture (using html2canvas)
+            const mapElement = document.getElementById('map');
+            html2canvas(mapElement, { useCORS: true }).then(canvas => {
+                const mapImg = canvas.toDataURL("image/png");
+                doc.addPage();
+                doc.setFontSize(14);
+                doc.text("Recorded Movement Path", 10, 20);
+                doc.addImage(mapImg, 'PNG', 10, 30, 180, 120);
+                doc.save(`Forensic_Report_${Date.now()}.pdf`);
+            });
+        }
+
+        // --- UTILS ---
+        function calcDist(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2-lat1) * Math.PI/180;
+            const dLon = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function calcVariance(arr) {
+            const m = arr.reduce((a, b) => a + b) / arr.length;
+            return arr.reduce((a, b) => a + (b - m)**2, 0) / arr.length;
+        }
+
+        async function generateHash(str) {
+            const msgBuffer = new TextEncoder().encode(str);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function triggerAlert(name) {
+            const zone = document.getElementById('alert-zone');
+            zone.innerHTML = `<div class="alert-box">⚠️ SUSPICIOUS TRACKING DETECTED: ${name}</div>`;
+            navigator.vibrate([500, 200, 500, 200, 500]);
         }
     </script>
 </body>
