@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Notes</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        :root { --primary: #6200ee; --bg: #f5f5f5; --danger: #ff1744; --safe: #00c853; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); overflow-x: hidden; }
+        
+        /* Notes UI */
+        #notes-app { display: block; padding: 20px; }
+        #search-bar { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ddd; font-size: 16px; }
+        .note-card { background: white; padding: 15px; border-radius: 8px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+        /* Secret Utility UI */
+        #secret-app { display: none; padding: 15px; background: #0f172a; color: #f8fafc; min-height: 100vh; }
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: #1e293b; padding: 10px; border-radius: 8px; border-left: 4px solid var(--primary); }
+        .stat-card h5 { margin: 0; font-size: 10px; text-transform: uppercase; color: #94a3b8; }
+        .stat-card p { margin: 5px 0 0; font-size: 18px; font-weight: bold; }
+
+        .control-panel { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; background: var(--primary); }
+        .btn-danger { background: var(--danger); }
+        .btn-success { background: var(--safe); }
+
+        #alert-zone { margin-bottom: 10px; }
+        .alert-box { background: var(--danger); color: white; padding: 12px; border-radius: 6px; font-weight: bold; text-align: center; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+
+        .viz-container { background: #1e293b; border-radius: 12px; padding: 10px; margin-bottom: 15px; }
+        #map { height: 300px; width: 100%; border-radius: 8px; margin-top: 10px; }
+        canvas { max-height: 150px; }
+    </style>
+</head>
+<body>
+
+    <div id="notes-app">
+        <h2>My Notes</h2>
+        <input type="text" id="search-bar" placeholder="Search notes...">
+        <div class="note-card"><strong>Hackathon To-do</strong><br>Finish Forensic PDF export.</div>
+        <div class="note-card"><strong>Grocery</strong><br>Buy protein bars and coffee.</div>
+    </div>
+
+    <div id="secret-app" id="report-content">
+        <h3 style="margin-top:0; color:var(--safe)">🛡️ Forensic Shield v3.0</h3>
+        
+        <div id="alert-zone"></div>
+
+        <div class="dashboard">
+            <div class="stat-card"><h5>Distance</h5><p id="stat-dist">0m</p></div>
+            <div class="stat-card"><h5>Target</h5><p id="stat-target">Scanning...</p></div>
+        </div>
+
+        <div class="control-panel">
+            <button onclick="startFullShield()" id="shield-btn">⚡ ACTIVATE SHIELD</button>
+            <button class="btn-success" onclick="generateForensicReport()">📄 GEN REPORT</button>
+            <button class="btn-danger" onclick="location.reload()">🔒 LOCK</button>
+        </div>
+
+        <div class="viz-container">
+            <canvas id="rssiChart"></canvas>
+        </div>
+
+        <div id="map"></div>
+    </div>
+
+    <script>
+        // --- CONFIG & STATE ---
+        const TARGET_NAME_FILTER = "FB"; // Targets smartwatches with "FB" in name
+        let isShieldActive = false;
+        let totalDistanceMoved = 0;
+        let lastCoord = null;
+        let signalData = []; // Store logs for PDF
+        let rssiHistory = []; 
+        let map, marker, path, chart;
+
+        // --- SECRET ACCESS ---
+        document.getElementById('search-bar').addEventListener('input', (e) => {
+            if (e.target.value === '6426') {
+                document.getElementById('notes-app').style.display = 'none';
+                document.getElementById('secret-app').style.display = 'block';
+                initMap();
+                initChart();
+            }
+        });
+
+        // --- INITIALIZATION ---
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([0,0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { crossOrigin: true }).addTo(map);
+            marker = L.marker([0,0]).addTo(map);
+            path = L.polyline([], {color: '#00e676', weight: 4}).addTo(map);
+
+            // Auto-locate on launch
+            navigator.geolocation.getCurrentPosition(p => {
+                const pos = [p.coords.latitude, p.coords.longitude];
+                map.setView(pos, 16);
+                marker.setLatLng(pos);
+            });
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('rssiChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [{ label: 'Target RSSI', data: [], borderColor: '#00e676', tension: 0.4 }] },
+                options: { responsive: true, scales: { y: { min: -100, max: -30 } } }
+            });
+        }
+
+        // --- CORE LOGIC ---
+        async function startFullShield() {
+            try {
+                // 1. Bluetooth Scan
+                const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
+                isShieldActive = true;
+                document.getElementById('shield-btn').innerText = "SHIELD ON";
+                document.getElementById('shield-btn').style.background = "#334155";
+
+                navigator.bluetooth.addEventListener('advertisementreceived', event => {
+                    const name = event.device.name || "Unknown";
+                    const rssi = event.rssi;
+
+                    // Filter for specific device (Smartwatch FB)
+                    if (name.toUpperCase().includes(TARGET_NAME_FILTER)) {
+                        handleTargetDevice(name, rssi);
+                    }
+                });
+
+                // 2. GPS Start
+                startGPSTracking();
+
+            } catch (err) {
+                alert("Enable 'Experimental Web Platform Features' in chrome://flags");
+            }
+        }
+
+        function handleTargetDevice(name, rssi) {
+            document.getElementById('stat-target').innerText = `${name} (${rssi})`;
+            
+            // Proximity Vibration
+            if (rssi > -50) navigator.vibrate([300, 100, 300]);
+            else if (rssi > -65) navigator.vibrate([100]);
+
+            // Chart Update
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            rssiHistory.push(rssi);
+            if(rssiHistory.length > 20) rssiHistory.shift();
+            chart.data.labels.push(time);
+            if(chart.data.labels.length > 20) chart.data.labels.shift();
+            chart.update('none');
+
+            // Log data for Forensic Report
+            signalData.push({ time, rssi, lat: lastCoord ? lastCoord[0] : 0, lng: lastCoord ? lastCoord[1] : 0 });
+
+            // Stalker Detection Logic (Variance check)
+            if (totalDistanceMoved > 20 && rssiHistory.length > 10) {
+                const variance = calcVariance(rssiHistory);
+                if (variance < 6) { // Stable signal while user is moving = suspicious
+                    triggerAlert(name);
+                }
+            }
+        }
+
+        function startGPSTracking() {
+            navigator.geolocation.watchPosition(p => {
+                const { latitude, longitude, accuracy } = p.coords;
+                if (accuracy > 30) return; // Ignore poor signals to prevent map jumping
+
+                const newPos = [latitude, longitude];
+                if (lastCoord) {
+                    const dist = calcDist(lastCoord[0], lastCoord[1], latitude, longitude);
+                    if (dist > 3) { // Drift Filter: Ignore movements < 3m
+                        totalDistanceMoved += dist;
+                        document.getElementById('stat-dist').innerText = Math.round(totalDistanceMoved) + "m";
+                        path.addLatLng(newPos);
+                    }
+                }
+                lastCoord = newPos;
+                marker.setLatLng(newPos);
+                map.panTo(newPos);
+            }, null, { enableHighAccuracy: true });
+        }
+
+        // --- FORENSIC REPORT GENERATOR ---
+        async function generateForensicReport() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const timestamp = new Date().toLocaleString();
+
+            // Section 1: Header
+            doc.setFontSize(22);
+            doc.setTextColor(98, 0, 238);
+            doc.text("FORENSIC PROXIMITY REPORT", 10, 20);
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generated: ${timestamp}`, 10, 28);
+            doc.text(`Target Device: Smartwatch (${TARGET_NAME_FILTER} filter)`, 10, 34);
+
+            // Section 2: Summary
+            doc.setFontSize(14);
+            doc.setTextColor(0);
+            doc.text("Incident Summary", 10, 50);
+            doc.setFontSize(10);
+            doc.text(`- Total Distance Traveled: ${Math.round(totalDistanceMoved)} meters`, 10, 60);
+            doc.text(`- Conclusion: Persistent signal detected during movement. Possible tracking device.`, 10, 66);
+
+            // Section 3: Signal Chart Capture
+            const chartCanvas = document.getElementById('rssiChart');
+            const chartImg = chartCanvas.toDataURL("image/png");
+            doc.text("Signal Strength History (RSSI)", 10, 80);
+            doc.addImage(chartImg, 'PNG', 10, 85, 180, 50);
+
+            // Section 4: Hash (Proof of integrity)
+            const logHash = await generateHash(JSON.stringify(signalData));
+            doc.text("Forensic Hash (SHA-256):", 10, 150);
+            doc.setFontSize(8);
+            doc.text(logHash, 10, 156);
+
+            // Section 5: Map Capture (using html2canvas)
+            const mapElement = document.getElementById('map');
+            html2canvas(mapElement, { useCORS: true }).then(canvas => {
+                const mapImg = canvas.toDataURL("image/png");
+                doc.addPage();
+                doc.setFontSize(14);
+                doc.text("Recorded Movement Path", 10, 20);
+                doc.addImage(mapImg, 'PNG', 10, 30, 180, 120);
+                doc.save(`Forensic_Report_${Date.now()}.pdf`);
+            });
+        }
+
+        // --- UTILS ---
+        function calcDist(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2-lat1) * Math.PI/180;
+            const dLon = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function calcVariance(arr) {
+            const m = arr.reduce((a, b) => a + b) / arr.length;
+            return arr.reduce((a, b) => a + (b - m)**2, 0) / arr.length;
+        }
+
+        async function generateHash(str) {
+            const msgBuffer = new TextEncoder().encode(str);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function triggerAlert(name) {
+            const zone = document.getElementById('alert-zone');
+            zone.innerHTML = `<div class="alert-box">⚠️ SUSPICIOUS TRACKING DETECTED: ${name}</div>`;
+            navigator.vibrate([500, 200, 500, 200, 500]);
+        }
+    </script>
+</body>
+</html>
