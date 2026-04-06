@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quick Notes</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+:root { --primary:#6200ee; --bg:#f5f5f5; --danger:#ff1744; --safe:#00c853; --dark:#0f172a; }
+body { font-family:'Segoe UI'; margin:0; background:var(--bg); }
+
+#notes-app { padding:20px; }
+#search-bar { width:100%; padding:12px; border-radius:8px; border:1px solid #ddd; }
+
+.note-card { background:white; padding:15px; margin:10px 0; border-radius:8px; }
+
+#secret-app { display:none; background:var(--dark); color:white; padding:15px; }
+
+.dashboard { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.stat-card { background:#1e293b; padding:10px; border-radius:8px; }
+
+.control-panel { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0; }
+
+button { padding:10px; border:none; border-radius:6px; color:white; background:var(--primary); }
+
+.alert-box { background:red; padding:10px; border-radius:6px; margin-bottom:10px; }
+
+#map { height:300px; margin-top:10px; }
+
+</style>
+</head>
+
+<body>
+
+<div id="notes-app">
+<h2>Quick Notes</h2>
+<input id="search-bar" placeholder="Search notes...">
+<div class="note-card">Hackathon notes</div>
+<div class="note-card">Sequence: 6426</div>
+</div>
+
+<div id="secret-app">
+<h3>🛡️ Forensic Shield</h3>
+
+<div id="alert-zone"></div>
+
+<div class="dashboard">
+<div class="stat-card">Movement: <span id="stat-dist">0m</span></div>
+<div class="stat-card">RSSI: <span id="stat-target">--</span></div>
+</div>
+
+<div class="control-panel">
+<button onclick="activateShield()">SCAN</button>
+<button onclick="generateReport()">PDF</button>
+<button onclick="startReplay()">REPLAY</button>
+<button onclick="location.reload()">LOCK</button>
+</div>
+
+<canvas id="rssiChart"></canvas>
+
+<div id="map"></div>
+
+<input type="range" id="timeline" min="0" max="0" value="0" oninput="seekReplay(this.value)" style="width:100%;margin-top:10px;">
+
+</div>
+
+<script>
+
+let totalDist=0,lastPos=null,forensicLog=[];
+let map,marker,path,chart;
+
+let replayIndex=0,replayInterval=null,replayPolyline=null;
+
+let typedSequence="";
+
+// 🔓 STEALTH MODE
+document.getElementById('search-bar').addEventListener('input',(e)=>{
+typedSequence+=e.target.value.slice(-1);
+if(typedSequence.includes("6426")) unlockRealApp();
+});
+
+function unlockRealApp(){
+document.getElementById('notes-app').style.display='none';
+document.getElementById('secret-app').style.display='block';
+setTimeout(initDashboard,100);
+typedSequence="";
+}
+
+// INIT
+function initDashboard(){
+map=L.map('map').setView([13.13,77.56],15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+marker=L.marker([0,0]).addTo(map);
+path=L.polyline([],{color:'green'}).addTo(map);
+
+chart=new Chart(document.getElementById('rssiChart'),{
+type:'line',
+data:{labels:[],datasets:[{data:[]}]}
+});
+
+navigator.geolocation.getCurrentPosition(p=>{
+let pos=[p.coords.latitude,p.coords.longitude];
+map.setView(pos,17);
+marker.setLatLng(pos);
+});
+}
+
+// BLUETOOTH
+async function activateShield(){
+try{
+const device=await navigator.bluetooth.requestDevice({acceptAllDevices:true});
+setInterval(()=>{
+let rssi=-50-Math.random()*20;
+handleData(device.name,rssi);
+},2000);
+}catch{}
+startGPS();
+}
+
+// HANDLE DATA
+function handleData(name,rssi){
+
+document.getElementById('stat-target').innerText=rssi;
+
+const time=new Date().toLocaleTimeString();
+chart.data.labels.push(time);
+chart.data.datasets[0].data.push(rssi);
+chart.update();
+
+let entry={
+lat:lastPos?lastPos[0]:0,
+lng:lastPos?lastPos[1]:0,
+rssi:rssi,
+time:Date.now(),
+isSuspicious:false
+};
+
+// DETECTION
+if(chart.data.datasets[0].data.length>5){
+let v=calcVariance(chart.data.datasets[0].data);
+if(v<8){
+entry.isSuspicious=true;
+
+document.getElementById('alert-zone').innerHTML=
+`<div class="alert-box">⚠️ TRACKING DETECTED</div>`;
+
+showGuide("Move to crowded place");
+showGuide("Turn off Bluetooth");
+}
+}
+
+forensicLog.push(entry);
+updateTimeline();
+}
+
+// GPS
+function startGPS(){
+navigator.geolocation.watchPosition(p=>{
+let current=[p.coords.latitude,p.coords.longitude];
+
+if(lastPos){
+let d=calcDist(lastPos[0],lastPos[1],current[0],current[1]);
+if(d>2){
+totalDist+=d;
+document.getElementById('stat-dist').innerText=Math.round(totalDist)+"m";
+path.addLatLng(current);
+}
+}
+
+lastPos=current;
+marker.setLatLng(current);
+});
+}
+
+// 🎬 REPLAY
+function startReplay(){
+if(forensicLog.length<2)return;
+
+let sorted=[...forensicLog].sort((a,b)=>a.time-b.time);
+
+if(replayInterval)clearInterval(replayInterval);
+
+replayPolyline=L.polyline([],{color:'#6200ee'}).addTo(map);
+
+replayIndex=0;
+
+replayInterval=setInterval(()=>{
+if(replayIndex>=sorted.length)return clearInterval(replayInterval);
+
+let p=sorted[replayIndex];
+
+marker.setLatLng([p.lat,p.lng]);
+replayPolyline.addLatLng([p.lat,p.lng]);
+
+if(p.isSuspicious) drawRedSegment(p);
+
+replayIndex++;
+
+},700);
+}
+
+// 🔴 RED SEGMENT
+function drawRedSegment(p){
+L.circle([p.lat,p.lng],{radius:5,color:'red'}).addTo(map);
+}
+
+// 🎚️ TIMELINE
+function updateTimeline(){
+document.getElementById('timeline').max=forensicLog.length-1;
+}
+
+function seekReplay(i){
+let sorted=[...forensicLog].sort((a,b)=>a.time-b.time);
+let p=sorted[i];
+marker.setLatLng([p.lat,p.lng]);
+}
+
+// 🧭 GUIDE
+function showGuide(msg){
+document.getElementById('alert-zone').innerHTML+=
+`<div style="background:#334155;padding:6px;margin-top:5px;">🧭 ${msg}</div>`;
+}
+
+// 🧠 PATH RECONSTRUCTION
+function drawFullPath(){
+let sorted=[...forensicLog].sort((a,b)=>a.time-b.time);
+let coords=sorted.map(p=>[p.lat,p.lng]);
+L.polyline(coords,{color:'lime'}).addTo(map);
+}
+
+// PDF
+async function generateReport(){
+drawFullPath();
+
+const {jsPDF}=window.jspdf;
+const doc=new jsPDF();
+
+doc.text("REPORT",20,20);
+
+html2canvas(document.getElementById('map')).then(c=>{
+doc.addImage(c.toDataURL(),"PNG",10,30,180,100);
+doc.save("report.pdf");
+});
+}
+
+// UTILS
+function calcDist(a,b,c,d){
+let R=6371e3;
+let dLat=(c-a)*Math.PI/180;
+let dLon=(d-b)*Math.PI/180;
+let x=Math.sin(dLat/2)**2+
+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLon/2)**2;
+return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+function calcVariance(arr){
+let m=arr.reduce((a,b)=>a+b)/arr.length;
+return arr.reduce((a,b)=>a+(b-m)**2,0)/arr.length;
+}
+
+</script>
+</body>
+</html>
