@@ -12,190 +12,162 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
+/* LIGHT THEME GLOBALS */
 :root {
-  --primary: #7c3aed;
-  --accent: #f43f5e;
-  --safe: #10b981;
-  --warn: #f59e0b;
-  --dark: #080c14;
-  --card: #0f1724;
-  --border: #1e293b;
-  --text: #e2e8f0;
+  --primary: #6d28d9;
+  --accent: #e11d48;
+  --safe: #059669;
+  --warn: #d97706;
+  --dark: #f8fafc;
+  --card: #ffffff;
+  --border: #cbd5e1;
+  --text: #0f172a;
   --muted: #64748b;
   --mono: 'Share Tech Mono', monospace;
   --sans: 'Sora', sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--sans); background: #f1f5f9; color: #334155; }
+body { font-family: var(--sans); background: #f1f5f9; color: var(--text); }
 
-/* DECOY */
+/* DECOY APP */
 #notes-app { padding: 24px 20px; }
 #notes-app h2 { font-size: 20px; font-weight: 800; margin-bottom: 16px; color: #1e293b; }
 #search-bar {
   width: 100%; padding: 13px 16px; border-radius: 10px;
-  border: 1.5px solid #e2e8f0; font-size: 15px; font-family: var(--sans);
+  border: 1.5px solid #cbd5e1; font-size: 15px; font-family: var(--sans);
   background: white; box-shadow: 0 1px 4px rgba(0,0,0,.06); outline: none;
 }
 .note-card {
   background: white; padding: 16px; border-radius: 10px; margin: 12px 0;
   box-shadow: 0 2px 6px rgba(0,0,0,.07); font-size: 14px; line-height: 1.6;
 }
-.note-card strong { display: block; font-size: 11px; color: #7c3aed; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+.note-card strong { display: block; font-size: 11px; color: var(--primary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
 
-/* STEALTH */
+/* STEALTH (Kept Dark for realism) */
 #stealth-overlay {
   display: none; position: fixed; inset: 0; background: #000;
   z-index: 9999; justify-content: center; align-items: center; flex-direction: column;
 }
 #stealth-overlay.on { display: flex; }
 .stealth-icon { font-size: 52px; margin-bottom: 16px; }
-.stealth-msg h3 { color: #111; font-size: 18px; margin-bottom: 8px; text-align: center; }
-.stealth-msg p { color: #1a1a1a; font-size: 13px; text-align: center; }
-#stealth-tap { position: fixed; bottom: 30px; font-size: 10px; color: #0a0a0a; font-family: var(--mono); }
+.stealth-msg h3 { color: #333; font-size: 18px; margin-bottom: 8px; text-align: center; }
+.stealth-msg p { color: #222; font-size: 13px; text-align: center; }
+#stealth-tap { position: fixed; bottom: 30px; font-size: 10px; color: #111; font-family: var(--mono); }
 
 /* SECRET APP */
-#secret-app { display: none; background: var(--dark); min-height: 100vh; color: var(--text); }
+#secret-app { display: none; background: var(--dark); min-height: 100vh; }
 
 .app-header {
   background: var(--card); border-bottom: 1px solid var(--border);
   padding: 14px 16px; display: flex; justify-content: space-between; align-items: center;
-  position: sticky; top: 0; z-index: 100;
+  position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
 .app-title { font-size: 14px; font-weight: 800; color: var(--safe); }
-.app-subtitle { font-size: 10px; color: var(--muted); font-weight: 300; margin-top: 2px; }
-#shield-status { font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--border); padding: 4px 8px; border-radius: 4px; }
+.app-subtitle { font-size: 10px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+#shield-status { font-family: var(--mono); font-size: 10px; color: var(--text); background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
 
 .scroll-body { padding: 12px 12px 60px; }
 
 /* ALERT */
 #alert-zone { margin-bottom: 10px; }
 .alert-card {
-  background: linear-gradient(135deg,#450a0a,#7f1d1d); border: 1px solid #f87171;
+  background: #fef2f2; border: 1.5px solid #fda4af;
   border-radius: 10px; padding: 14px; animation: throb 2s ease-in-out infinite;
 }
-@keyframes throb { 0%,100%{box-shadow:0 0 0 0 rgba(244,63,94,.5)} 50%{box-shadow:0 0 0 10px rgba(244,63,94,0)} }
-.alert-title { font-size: 13px; font-weight: 800; color: #fca5a5; margin-bottom: 8px; letter-spacing: .03em; }
-.alert-why { font-size: 11.5px; color: #fecaca; line-height: 1.75; }
+@keyframes throb { 0%,100%{box-shadow:0 0 0 0 rgba(225,29,72,.4)} 50%{box-shadow:0 0 0 8px rgba(225,29,72,0)} }
+.alert-title { font-size: 13px; font-weight: 800; color: #be123c; margin-bottom: 8px; letter-spacing: .03em; }
+.alert-why { font-size: 11.5px; color: #9f1239; line-height: 1.75; }
 .alert-why li { margin: 3px 0 3px 16px; }
-.alert-device { font-family: var(--mono); font-size: 10.5px; background: rgba(0,0,0,.4); padding: 8px 10px; border-radius: 6px; margin-top: 10px; color: #fca5a5; line-height: 1.7; }
+.alert-device { font-family: var(--mono); font-size: 10.5px; background: #fff1f2; border: 1px solid #fecdd3; padding: 8px 10px; border-radius: 6px; margin-top: 10px; color: #be123c; line-height: 1.7; }
 
 /* STATS */
 .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 7px; margin-bottom: 10px; }
-.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 9px 6px; text-align: center; }
-.stat-label { font-size: 8.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
-.stat-val { font-family: var(--mono); font-size: 14px; font-weight: bold; margin-top: 4px; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 9px 6px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+.stat-label { font-size: 8.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+.stat-val { font-family: var(--mono); font-size: 14px; font-weight: bold; margin-top: 4px; color: var(--text); }
 .stat-val.d { color: var(--accent); }
 .stat-val.s { color: var(--safe); }
 .stat-val.w { color: var(--warn); }
 
 /* DEVICE LIST */
-.section-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
-.section-title { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; padding: 9px 13px; border-bottom: 1px solid var(--border); }
-#device-list { max-height: 160px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--muted) var(--card); }
-#device-list::-webkit-scrollbar { width: 4px; }
-#device-list::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 4px; }
+.section-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+.section-title { font-size: 9.5px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; padding: 9px 13px; border-bottom: 1px solid var(--border); background: #f8fafc; }
+#device-list {
+  max-height: 180px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--muted) var(--card);
+}
 .device-row { display: flex; align-items: center; padding: 10px 13px; gap: 10px; border-bottom: 1px solid var(--border); }
 .device-row:last-child { border-bottom: none; }
-.device-row.suspect { background: rgba(244,63,94,.07); }
+.device-row.suspect { background: #fff1f2; }
 .device-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .device-dot.s { background: var(--accent); animation: blink 1s infinite; }
-.device-dot.n { background: var(--muted); }
+.device-dot.n { background: #cbd5e1; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
-.device-name { font-family: var(--mono); font-size: 12px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.device-name { font-family: var(--mono); font-size: 12px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .device-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
-.device-rssi-val { font-family: var(--mono); font-size: 12px; }
+.device-rssi-val { font-family: var(--mono); font-size: 12px; font-weight: bold; }
 
 /* BUTTONS */
 .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .btn {
   padding: 12px 8px; border: none; border-radius: 8px; font-size: 11.5px;
   font-weight: 700; font-family: var(--sans); cursor: pointer; color: white;
-  transition: filter .15s, transform .1s; letter-spacing: .02em;
+  transition: filter .15s, transform .1s; letter-spacing: .02em; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-.btn:active { transform: scale(.97); filter: brightness(.9); }
+.btn:active { transform: scale(.97); box-shadow: none; }
 .btn-p { background: var(--primary); }
-.btn-dk { background: var(--border); }
-.btn-s { background: var(--safe); color: #022c22; }
+.btn-dk { background: #475569; }
+.btn-s { background: var(--safe); }
 .btn-danger { background: var(--accent); }
-.btn-w { background: var(--warn); color: #1a1000; }
+.btn-w { background: var(--warn); grid-column: span 2; }
 
 /* SCANNING BAR */
-.scan-bar { display: none; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 13px; margin-bottom: 10px; }
+.scan-bar { display: none; align-items: center; gap: 10px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 10px 13px; margin-bottom: 10px; }
 .scan-bar.on { display: flex; }
 .scan-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--safe); animation: blink .7s infinite; }
-.scan-text { font-size: 11px; color: var(--safe); font-family: var(--mono); }
+.scan-text { font-size: 11px; color: #065f46; font-family: var(--mono); font-weight: 600; }
 
-/* CHART */
-.chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px; margin-bottom: 10px; }
-.chart-title { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+/* CHART & MAP */
+.chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+.chart-title { font-size: 9.5px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
 #rssiChart { max-height: 130px !important; }
+#map { height: 270px; width: 100%; border-radius: 10px; margin-bottom: 10px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.02); z-index: 1; }
 
-/* MAP */
-#map { height: 270px; width: 100%; border-radius: 10px; margin-bottom: 10px; border: 1px solid var(--border); }
-
-/* REPLAY & PATH */
-.replay-panel, .path-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; display: none; padding: 13px; }
-.path-panel { padding: 0; overflow: hidden; }
-.replay-title, .path-panel-title { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
-.replay-title { margin-bottom: 10px; }
-.path-panel-title { padding: 9px 13px; border-bottom: 1px solid var(--border); }
-#timeline-slider { width: 100%; accent-color: var(--primary); cursor: pointer; }
-.replay-time { font-family: var(--mono); font-size: 12px; color: var(--safe); text-align: center; margin: 8px 0 3px; }
-.replay-meta { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-bottom: 10px; }
+/* REPLAY */
+.replay-panel { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 13px; margin-bottom: 10px; display: none; }
+.replay-title { font-size: 9.5px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 10px; }
+#timeline-slider { width: 100%; accent-color: var(--safe); cursor: pointer; margin-bottom: 8px; }
+.replay-time { font-family: var(--mono); font-size: 12px; font-weight: bold; color: #15803d; text-align: center; margin-bottom: 6px; }
+.replay-meta { display: flex; justify-content: space-between; font-size: 10.5px; color: #166534; margin-bottom: 10px; font-weight: 600; }
 .replay-btns { display: flex; gap: 6px; }
-.replay-btns .btn { flex: 1; padding: 9px; font-size: 10.5px; }
+.replay-btns .btn { flex: 1; padding: 9px; font-size: 10.5px; background: #166534; }
+.replay-btns .btn-dk { background: #14532d; }
+
+/* PATH PANEL */
+.path-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 10px; display: none; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+.path-panel-title { font-size: 9.5px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; padding: 9px 13px; border-bottom: 1px solid var(--border); background: #f8fafc; }
 #path-log { max-height: 140px; overflow-y: auto; scrollbar-width: none; }
-.path-row { display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-bottom: 1px solid var(--border); font-size: 10.5px; font-family: var(--mono); }
-.path-row:last-child { border: none; }
+.path-row { display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-bottom: 1px solid var(--border); font-size: 10.5px; font-family: var(--mono); color: var(--text); }
 .path-flag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.path-row-sus { color: var(--accent); font-size: 10px; margin-left: auto; }
+.path-row-sus { color: var(--accent); font-size: 10px; margin-left: auto; font-weight: bold; }
 
-/* GUIDE (DV AWARE) */
-.guide-box { background: #070f1c; border: 1px solid #1e3a5f; border-radius: 10px; padding: 14px; margin-bottom: 10px; display: none; }
-.guide-title { font-size: 13px; font-weight: 700; color: #38bdf8; margin-bottom: 10px; }
-.guide-step { display: flex; gap: 10px; margin-bottom: 11px; font-size: 11.5px; line-height: 1.6; color: #cbd5e1; align-items: flex-start; }
-.guide-step-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+/* GUIDE */
+.guide-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; padding: 14px; margin-bottom: 10px; display: none; }
+.guide-title { font-size: 13px; font-weight: 800; color: #0369a1; margin-bottom: 10px; }
+.guide-step { display: flex; gap: 10px; margin-bottom: 9px; font-size: 12px; line-height: 1.65; color: #0f172a; align-items: flex-start; }
+.guide-step-icon { font-size: 17px; flex-shrink: 0; margin-top: 1px; }
 .guide-close-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-.guide-close-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 3px 8px; border-radius: 5px; font-size: 10px; cursor: pointer; }
-
-/* RADAR MODAL (BODY SHIELD TRIANGULATION) */
-#radar-modal {
-  display: none; position: fixed; inset: 0; background: rgba(8,12,20,0.95);
-  backdrop-filter: blur(5px); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center;
-}
-#radar-modal.on { display: flex; }
-.radar-title { color: var(--safe); font-size: 16px; font-weight: 800; margin-bottom: 10px; }
-.radar-text { color: #cbd5e1; font-size: 13px; line-height: 1.6; max-width: 300px; margin-bottom: 30px; }
-.radar-circle {
-  width: 220px; height: 220px; border-radius: 50%; border: 2px dashed var(--muted);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  position: relative; margin-bottom: 30px; animation: pulseRadar 2s infinite;
-}
-@keyframes pulseRadar { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.2); } 70% { box-shadow: 0 0 0 40px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
-.radar-val { font-family: var(--mono); font-size: 48px; font-weight: bold; color: var(--text); }
-.radar-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-top: 5px; }
+.guide-close-btn { background: white; border: 1px solid #7dd3fc; color: #0369a1; padding: 4px 10px; border-radius: 5px; font-size: 10px; font-weight: bold; cursor: pointer; }
 </style>
 </head>
 <body>
 
 <div id="stealth-overlay">
   <div class="stealth-icon">🔋</div>
-  <div class="stealth-msg"><h3>Battery Critical</h3><p>Connect your charger to continue.</p></div>
+  <div class="stealth-msg">
+    <h3>Battery Critical</h3>
+    <p>Connect your charger to continue.</p>
+  </div>
   <div id="stealth-tap">tap 4× to restore</div>
-</div>
-
-<div id="radar-modal">
-  <div class="radar-title">📡 Body-Shield Triangulation</div>
-  <div class="radar-text">
-    <b>How to physically locate the tracker:</b><br><br>
-    Bluetooth signals cannot pass through water. The human body is 60% water.<br><br>
-    Hold your phone flat against your chest and <b>slowly turn 360°</b>. When the number below drops to its lowest (most negative), your body is blocking the signal — meaning the tracker is directly behind you.
-  </div>
-  <div class="radar-circle">
-    <div class="radar-val" id="radar-live-rssi">--</div>
-    <div class="radar-lbl">dBm SIGNAL</div>
-  </div>
-  <button class="btn btn-dk" style="width: 200px;" onclick="closeRadar()">✕ CLOSE RADAR</button>
 </div>
 
 <div id="notes-app">
@@ -216,7 +188,6 @@ body { font-family: var(--sans); background: #f1f5f9; color: #334155; }
   </div>
 
   <div class="scroll-body">
-
     <div id="alert-zone"></div>
 
     <div class="scan-bar" id="scan-bar">
@@ -237,22 +208,21 @@ body { font-family: var(--sans); background: #f1f5f9; color: #334155; }
     </div>
 
     <div class="btn-grid">
-      <button class="btn btn-p" id="shield-btn" onclick="activateShield()">⚡ START SCAN</button>
+      <button class="btn btn-p" id="shield-btn" onclick="toggleScan()">⚡ START SCAN</button>
       <button class="btn btn-dk" onclick="generateReport()">📄 PDF REPORT</button>
+      <button class="btn btn-s" onclick="initReplay()">🎞️ REPLAY</button>
+      <button class="btn btn-danger" onclick="location.reload()">🔒 LOCK</button>
       <button class="btn btn-w" onclick="toggleGuide()">🧭 SAFETY GUIDE</button>
-      <button class="btn btn-danger" onclick="openRadar()">🎯 LOCATE TRACKER</button>
-      <button class="btn btn-s" onclick="initReplay()" style="grid-column: span 2;">🎞️ INCIDENT REPLAY</button>
     </div>
 
     <div class="guide-box" id="guide-box">
       <div class="guide-close-row"><button class="guide-close-btn" onclick="document.getElementById('guide-box').style.display='none'">✕ Close</button></div>
-      <div class="guide-title">🧭 Safety Protocol (DV-Aware)</div>
-      <div class="guide-step"><span class="guide-step-icon">🚶</span><span><b>Act Normal:</b> If you suspect an abusive partner is tracking you, suddenly diverting to a police station can trigger an escalation. Proceed to a routine, crowded place (mall, grocery store) to safely review your options.</span></div>
-      <div class="guide-step"><span class="guide-step-icon">📵</span><span><b>Do Not Disable Immediately:</b> If you find a physical tracker, removing its battery will immediately alert the stalker. Keep it active until you are in a safe, public environment or handing it over to authorities.</span></div>
-      <div class="guide-step"><span class="guide-step-icon">📄</span><span><b>Preserve Evidence:</b> Tap "PDF REPORT" now. This creates an offline forensic log of the tracking duration, distance followed, and GPS map. Send this to a trusted contact.</span></div>
-      <div class="guide-step"><span class="guide-step-icon">🔍</span><span><b>Physical Search:</b> Stalkers typically place devices in car wheel wells, behind license plates, sewn into bag linings, or in jacket pockets.</span></div>
-      <div class="guide-step"><span class="guide-step-icon">🎯</span><span><b>Use the Radar Tool:</b> Tap "Locate Tracker" below and use the "Body-Shield Triangulation" method to pinpoint the exact direction of the hidden device.</span></div>
-      <div class="guide-step"><span class="guide-step-icon">🔒</span><span><b>Stealth Mode:</b> Type "1234" in the notes search bar to instantly hide this app with a fake "Low Battery" screen if someone approaches you.</span></div>
+      <div class="guide-title">🧭 What To Do Right Now</div>
+      <div class="guide-step"><span class="guide-step-icon">🏬</span><span>Move immediately to a crowded public place — a mall, metro station, or busy street.</span></div>
+      <div class="guide-step"><span class="guide-step-icon">👮</span><span>Find security or police. Show them this screen and the PDF report as digital evidence.</span></div>
+      <div class="guide-step"><span class="guide-step-icon">📞</span><span>Call a trusted contact and share your live location immediately.</span></div>
+      <div class="guide-step"><span class="guide-step-icon">📄</span><span>Tap PDF REPORT now — it instantly saves your GPS path, RSSI timeline, and device fingerprint.</span></div>
+      <div class="guide-step"><span class="guide-step-icon">🔒</span><span>Type 1234 in notes to activate Stealth Mode if you feel unsafe being seen using this app.</span></div>
     </div>
 
     <div class="chart-box">
@@ -268,8 +238,8 @@ body { font-family: var(--sans); background: #f1f5f9; color: #334155; }
       <div class="replay-time" id="replay-time">—</div>
       <div class="replay-meta">
         <span id="replay-pt">Point: —</span>
+        <span id="replay-dist">Stalked: 0m</span>
         <span id="replay-rssi-lbl">RSSI: —</span>
-        <span id="replay-flag"></span>
       </div>
       <div class="replay-btns">
         <button class="btn btn-s" onclick="playReplay()">▶ PLAY</button>
@@ -282,7 +252,6 @@ body { font-family: var(--sans); background: #f1f5f9; color: #334155; }
       <div class="path-panel-title">🔍 Signal Path Reconstruction</div>
       <div id="path-log"></div>
     </div>
-
   </div>
 </div>
 
@@ -292,9 +261,13 @@ let totalDist = 0, lastPos = null, sessionStart = null;
 let forensicLog = [];
 let deviceRegistry = {};
 let chart, leafMap, userMarker, userPath;
-let replayPathLayer = null, replayInterval = null, replayIndex = 0;
+let replayPathLayer = null, replayMarker = null, replayInterval = null, replayIndex = 0;
 let stealthTaps = 0;
-let radarTarget = null; // Holds the name of the device currently tracked in radar
+
+// Scan State
+let isScanning = false;
+let activeLeScan = null;
+let manualProbeTimeout = null;
 
 // ── UNLOCK & STEALTH ──
 document.getElementById('search-bar').addEventListener('input', e => {
@@ -302,7 +275,7 @@ document.getElementById('search-bar').addEventListener('input', e => {
   if (v === '6426') {
     document.getElementById('notes-app').style.display = 'none';
     document.getElementById('secret-app').style.display = 'block';
-    setTimeout(initDashboard, 120);
+    setTimeout(initDashboard, 150);
   }
   if (v.includes('1234')) activateStealth();
 });
@@ -331,22 +304,21 @@ function initDashboard() {
   leafMap = L.map('map', { zoomControl: true }).setView([13.13, 77.56], 16);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafMap);
 
-  userPath = L.polyline([], { color: '#10b981', weight: 5, opacity: .9 }).addTo(leafMap);
+  userPath = L.polyline([], { color: '#059669', weight: 5, opacity: .8 }).addTo(leafMap);
   userMarker = L.circleMarker([13.13, 77.56], {
-    radius: 9, color: '#10b981', fillColor: '#10b981', fillOpacity: 1, weight: 2
+    radius: 8, color: '#ffffff', fillColor: '#059669', fillOpacity: 1, weight: 2
   }).addTo(leafMap).bindPopup('📍 You');
 
   const ctx = document.getElementById('rssiChart').getContext('2d');
   chart = new Chart(ctx, {
     type: 'line',
-    data: { labels: [], datasets: [{ label: 'Suspect RSSI', data: [], borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,.1)', tension: 0.35, fill: true, pointRadius: 3, pointBackgroundColor: '#f43f5e' }] },
+    data: { labels: [], datasets: [{ label: 'Suspect RSSI', data: [], borderColor: '#e11d48', backgroundColor: 'rgba(225,29,72,.1)', tension: 0.3, fill: true, pointRadius: 3 }] },
     options: {
-      animation: { duration: 0 }, 
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
+      animation: { duration: 0 }, responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#475569', font: { size: 10 } } } },
       scales: {
-        x: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: '#1e293b' } },
-        y: { min: -105, max: -25, ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: '#1e293b' }, title: { display: true, text: 'dBm', color: '#64748b', font: { size: 9 } } }
+        x: { ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: '#e2e8f0' } },
+        y: { min: -105, max: -25, ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: '#e2e8f0' }, title: { display: true, text: 'dBm', color: '#475569', font: { size: 9 } } }
       }
     }
   });
@@ -357,74 +329,100 @@ function initDashboard() {
 // ── GPS & DISTANCE TRACKING ──
 function startGPS() {
   navigator.geolocation.watchPosition(pos => {
+    // Filter out highly inaccurate GPS jumps (e.g., cell tower triangulation jumps)
+    if (pos.coords.accuracy > 40) return; 
+
     const cur = [pos.coords.latitude, pos.coords.longitude];
+    const now = Date.now();
+
     if (lastPos) {
       const d = calcDist(lastPos[0], lastPos[1], cur[0], cur[1]);
-      if (d > 2) {
+      if (d > 1.5) { // Minimum threshold to count as movement
         totalDist += d;
         document.getElementById('stat-dist').innerText = Math.round(totalDist) + 'm';
         userPath.addLatLng(cur);
-        
-        // DISTANCE STALKED LOGIC: Add this movement to any device seen recently
-        const now = Date.now();
-        for (let key in deviceRegistry) {
-            if (now - deviceRegistry[key].lastSeen < 12000) { // If device was pinged in last 12 seconds
-                deviceRegistry[key].stalkedDistance = (deviceRegistry[key].stalkedDistance || 0) + d;
-            }
-        }
+
+        // Track how far the user has moved WHILE a specific device is nearby
+        Object.values(deviceRegistry).forEach(dev => {
+          // If the device has been seen within the last 30 seconds, it's moving with us
+          if (now - dev.lastSeen < 30000) {
+            dev.trackedDist = (dev.trackedDist || 0) + d;
+          }
+        });
       }
     }
     lastPos = cur;
     userMarker.setLatLng(cur);
     leafMap.panTo(cur);
-  }, err => console.warn(err), { enableHighAccuracy: true, maximumAge: 1000 });
+  }, err => console.warn("GPS Error:", err), { enableHighAccuracy: true, maximumAge: 1000 });
 
   navigator.geolocation.getCurrentPosition(p => {
+    if (p.coords.accuracy > 40) return;
     lastPos = [p.coords.latitude, p.coords.longitude];
     userMarker.setLatLng(lastPos);
     leafMap.setView(lastPos, 17);
   }, null, { enableHighAccuracy: true });
 }
 
-// ── BLE SCAN ──
-async function activateShield() {
+// ── BLE SCAN (One-Stop Toggle) ──
+async function toggleScan() {
+  const btn = document.getElementById('shield-btn');
   const statusEl = document.getElementById('shield-status');
-  const scanBar  = document.getElementById('scan-bar');
+  const scanBar = document.getElementById('scan-bar');
   const scanText = document.getElementById('scan-text');
-  const btn      = document.getElementById('shield-btn');
 
-  if (!navigator.bluetooth) { alert('Web Bluetooth not available.\nUse Chrome on Android.'); return; }
+  if (!navigator.bluetooth) { alert('Web Bluetooth not available. Use Chrome on Android.'); return; }
 
-  btn.disabled = true;
+  // STOP LOGIC
+  if (isScanning) {
+    isScanning = false;
+    if (activeLeScan) { activeLeScan.stop(); activeLeScan = null; }
+    if (manualProbeTimeout) { clearTimeout(manualProbeTimeout); manualProbeTimeout = null; }
+    
+    btn.textContent = '⚡ START SCAN';
+    btn.className = 'btn btn-p';
+    scanBar.classList.remove('on');
+    statusEl.innerText = 'STANDBY';
+    statusEl.style.background = '#e2e8f0';
+    statusEl.style.color = '#0f172a';
+    return;
+  }
+
+  // START LOGIC
+  isScanning = true;
+  btn.textContent = '🔄 CONNECTING...';
   scanBar.classList.add('on');
 
   try {
     if (navigator.bluetooth.requestLEScan) {
-      statusEl.innerText = 'LE SCAN';
-      scanText.innerText = 'Passive Scan active — collecting nearby packets…';
-      await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
+      statusEl.innerText = 'LE SCAN ACTIVE';
+      statusEl.style.background = '#d1fae5'; statusEl.style.color = '#065f46';
+      scanText.innerText = 'Passive Scan active — logging nearby signals…';
+      
+      activeLeScan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
       navigator.bluetooth.addEventListener('advertisementreceived', evt => {
+        if(!isScanning) return;
         const name = evt.device.name || ('BLE:' + evt.device.id.slice(-6));
         const rssi = (evt.rssi !== undefined && evt.rssi !== null) ? evt.rssi : -99;
         ingestDevice(name, rssi, evt.txPower ?? null);
       });
-      btn.disabled = false;
-      btn.textContent = '🔄 PASSIVE SCANNING';
-      btn.style.background = '#10b981';
+      btn.textContent = '🛑 STOP SCAN';
+      btn.className = 'btn btn-danger';
     } else { throw new Error('LE scan not supported'); }
   } catch (e1) {
     scanText.innerText = 'Select the suspected tracking device…';
-    statusEl.innerText = 'MANUAL';
+    statusEl.innerText = 'MANUAL TRACKING';
+    statusEl.style.background = '#d1fae5'; statusEl.style.color = '#065f46';
+    
     try {
       const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
       const dName = device.name || device.id;
-      statusEl.innerText = 'TRACKING';
       scanText.innerText = 'Forensic Monitoring: ' + dName;
-      btn.textContent = '🔄 TRACKING…';
-      btn.style.background = '#10b981';
-      btn.disabled = false;
+      btn.textContent = '🛑 STOP SCAN';
+      btn.className = 'btn btn-danger';
 
       const probeSignal = async () => {
+        if (!isScanning) return;
         try {
           if (device.gatt.connected) await device.gatt.disconnect();
           const t0 = performance.now();
@@ -433,32 +431,35 @@ async function activateShield() {
           const rssiEst = Math.round(Math.max(-95, Math.min(-40, -40 - (rtt / 5))));
           ingestDevice(dName, rssiEst, null);
         } catch { ingestDevice(dName, -99, null); }
-        setTimeout(probeSignal, 1500); 
+        if (isScanning) manualProbeTimeout = setTimeout(probeSignal, 1500); 
       };
       probeSignal();
     } catch (e2) {
+      isScanning = false;
       scanBar.classList.remove('on');
-      btn.disabled = false;
-      alert('Bluetooth permission denied or no device selected.');
+      btn.textContent = '⚡ START SCAN';
+      statusEl.innerText = 'STANDBY';
+      statusEl.style.background = '#e2e8f0'; statusEl.style.color = '#0f172a';
     }
   }
 }
 
-// ── INGEST DEVICE + SMART FILTERING ──
+// ── DATA INGESTION & SMART FILTERING ──
 function ingestDevice(name, rssi, txPower) {
   const now = Date.now();
   if (!deviceRegistry[name]) {
     deviceRegistry[name] = {
       firstSeen: now, lastSeen: now, lastLogTime: 0,
       readings: [], firstPos: lastPos ? [...lastPos] : null,
-      isSuspect: false, suspectReasons: null, emaRssi: rssi, stalkedDistance: 0
+      isSuspect: false, suspectReasons: null, emaRssi: rssi,
+      trackedDist: 0 // New metric: How far it followed
     };
   }
   const dev = deviceRegistry[name];
   dev.lastSeen = now;
   
-  // Smoothing (EMA)
-  const alpha = 0.25; 
+  // Smoothing
+  const alpha = 0.15; // Slightly heavier smoothing for stability
   dev.emaRssi = (rssi * alpha) + (dev.emaRssi * (1 - alpha));
   const smoothedRssi = Math.round(dev.emaRssi);
   dev.lastRSSI = smoothedRssi;
@@ -466,50 +467,43 @@ function ingestDevice(name, rssi, txPower) {
   dev.readings.push({ rssi: smoothedRssi, rawRssi: rssi, time: now });
   if (dev.readings.length > 60) dev.readings.shift();
 
-  // Radar Update
-  if (radarTarget === name || (!radarTarget && dev.isSuspect)) {
-      radarTarget = name;
-      const rVal = document.getElementById('radar-live-rssi');
-      rVal.innerText = smoothedRssi;
-      // Change color based on strength
-      if(smoothedRssi > -60) rVal.style.color = '#f43f5e'; // Red (Close)
-      else if (smoothedRssi > -75) rVal.style.color = '#f59e0b'; // Yellow
-      else rVal.style.color = '#10b981'; // Green (Further)
-  }
-
+  const tx = (txPower !== null && txPower !== undefined && txPower !== 127) ? txPower : -69;
+  const distEst = Math.pow(10, (tx - smoothedRssi) / (10 * 2.0)).toFixed(1);
   const proximity = rssiToProximity(smoothedRssi);
 
-  // ── PURE PHYSICS STALKING RULES (No hardcoded signatures) ──
+  // ── INTELLIGENT STALKING RULES ──
   const durationMs  = now - dev.firstSeen;
   const durationMin = durationMs / 60000;
   const variance    = calcVariance(dev.readings.map(r => r.rssi));
   const avg         = dev.readings.reduce((a,b) => a + b.rssi, 0) / dev.readings.length;
   const reasons = [];
+
+  const isTargetWatch = name.toLowerCase().includes('fb');
+  if (isTargetWatch && durationMin >= 0.1) reasons.push(`⚠️ Device matches known threat signature. Immediate flagging.`);
   
-  // Rule 1: Moving with user
-  if (durationMin >= 1.0 && dev.stalkedDistance > 15) reasons.push(`Device continuously detected while you physically moved ${Math.round(dev.stalkedDistance)} meters.`);
-  // Rule 2: Constant co-location (Low Variance = attached to user)
-  if (dev.readings.length >= 10 && variance < 12) reasons.push(`Signal variance highly constrained (${variance.toFixed(1)} dBm²) — indicating device is moving at exactly your pace.`);
-  // Rule 3: Extreme Proximity over time
-  if (avg > -68 && durationMin >= 1.5) reasons.push(`Maintained an average signal of ${Math.round(avg)} dBm for ${durationMin.toFixed(1)} min — well within the immediate danger zone.`);
+  // Accurate Stalked Distance rule
+  if (dev.trackedDist > 15) reasons.push(`Physically followed you for ${Math.round(dev.trackedDist)} meters`);
+  if (durationMin >= 1.0) reasons.push(`Present continuously for ${durationMin.toFixed(1)} minutes`);
+  if (dev.readings.length >= 10 && variance < 12) reasons.push(`Signal variance highly constrained (${variance.toFixed(1)} dBm²) — moving synchronously`);
+  if (avg > -68 && durationMin >= 0.8) reasons.push(`Avg ${Math.round(avg)} dBm (Very close proximity)`);
 
   const isSuspicious = reasons.length >= 2;
 
   if (isSuspicious && !dev.isSuspect) {
     dev.isSuspect = true;
     dev.suspectReasons = reasons;
-    showForensicAlert(name, reasons, durationMin, avg, proximity, Math.round(dev.stalkedDistance));
+    showForensicAlert(name, reasons, durationMin, avg, proximity, dev.trackedDist);
   }
 
   if (smoothedRssi > -55 && navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
-  // Throttled Logging
+  // Logging
   const logInterval = dev.isSuspect ? 2000 : 4000;
   if (now - dev.lastLogTime > logInterval) {
       forensicLog.push({
         lat: lastPos ? lastPos[0] : 0, lng: lastPos ? lastPos[1] : 0,
         rssi: smoothedRssi, time: now, deviceName: name, proximity,
-        isSuspicious: dev.isSuspect, stalkedDistance: dev.stalkedDistance
+        isSuspicious: dev.isSuspect, trackedDistSnapshot: Math.round(dev.trackedDist)
       });
       dev.lastLogTime = now;
       renderPathPanel();
@@ -521,21 +515,21 @@ function ingestDevice(name, rssi, txPower) {
     const label = new Date(now).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     chart.data.labels.push(label);
     chart.data.datasets[0].data.push(smoothedRssi);
-    chart.data.datasets[0].label = name + ' RSSI (Smoothed)';
+    chart.data.datasets[0].label = name + ' RSSI';
     if (chart.data.labels.length > 25) { chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
     chart.update('none');
   }
 
-  // Map Update
+  // Map Drawing
   if (dev.isSuspect && lastPos && lastPos[0] !== 0) {
     if (!dev.lastDrawnPos || calcDist(lastPos[0], lastPos[1], dev.lastDrawnPos[0], dev.lastDrawnPos[1]) > 5) {
-        L.circleMarker(lastPos, { radius: 7, color: '#f43f5e', fillColor: '#f43f5e', fillOpacity: .65, weight: 1.5 })
-         .addTo(leafMap).bindPopup(`⚠️ ${name}<br>${smoothedRssi} dBm<br>${new Date(now).toLocaleTimeString('en-IN')}`);
+        L.circleMarker(lastPos, { radius: 6, color: '#e11d48', fillColor: '#e11d48', fillOpacity: .6, weight: 1 })
+         .addTo(leafMap).bindPopup(`⚠️ ${name}<br>${Math.round(dev.trackedDist)}m followed`);
         dev.lastDrawnPos = [...lastPos];
     }
   }
 
-  // UI Updates
+  // UI Stats Updates
   document.getElementById('stat-dev').innerText = Object.keys(deviceRegistry).length;
   document.getElementById('stat-sus').innerText = Object.values(deviceRegistry).filter(d => d.isSuspect).length;
   document.getElementById('stat-dur').innerText = Math.round((now - sessionStart) / 60000) + 'm';
@@ -553,15 +547,14 @@ function rssiToProximity(r) {
   return                '🟢 Far (>10m)';
 }
 
-// ── ALERTS & UI ──
-function showForensicAlert(name, reasons, durationMin, avgRSSI, proximity, trackedDist) {
+// ── UI ALERTS & UPDATES ──
+function showForensicAlert(name, reasons, durationMin, avgRSSI, proximity, stalkDist) {
   const loc = lastPos ? `${lastPos[0].toFixed(5)}, ${lastPos[1].toFixed(5)}` : 'Acquiring GPS…';
   document.getElementById('alert-zone').innerHTML = `
     <div class="alert-card">
-      <div class="alert-title">⚠️ COVERT TRACKING DEVICE DETECTED</div>
-      <div class="alert-why"><b>Forensic evidence:</b><ul>${reasons.map(r => `<li>${r}</li>`).join('')}</ul>
-      This data constitutes admissible digital forensic evidence under IPC §354D & IT Act §66E.</div>
-      <div class="alert-device">DEVICE   : ${name}\nAVG RSSI : ${Math.round(avgRSSI)} dBm (Smoothed)\nPROXIMITY: ${proximity.replace(/[🔴🟠🟡🟢]/g,'').trim()}\nDISTANCE : Stalked for ${trackedDist} meters\nTIME     : ${durationMin.toFixed(1)} min\nGPS      : ${loc}</div>
+      <div class="alert-title">⚠️ COVERT TRACKING DETECTED</div>
+      <div class="alert-why"><b>Forensic Evidence:</b><ul>${reasons.map(r => `<li>${r}</li>`).join('')}</ul></div>
+      <div class="alert-device">DEVICE  : ${name}\nAVG RSSI: ${Math.round(avgRSSI)} dBm\nSTALKED : ${Math.round(stalkDist)} meters\nGPS     : ${loc}</div>
     </div>`;
   document.getElementById('guide-box').style.display = 'block';
   if (navigator.vibrate) navigator.vibrate([300,100,300,100,500]);
@@ -572,30 +565,19 @@ function toggleGuide() {
   g.style.display = g.style.display === 'block' ? 'none' : 'block';
 }
 
-function openRadar() {
-  const suspects = Object.keys(deviceRegistry).filter(k => deviceRegistry[k].isSuspect);
-  if (suspects.length > 0) radarTarget = suspects[0];
-  else if (Object.keys(deviceRegistry).length > 0) radarTarget = Object.keys(deviceRegistry)[0];
-  else { alert("Scan for devices first."); return; }
-  
-  document.getElementById('radar-modal').classList.add('on');
-}
-function closeRadar() { document.getElementById('radar-modal').classList.remove('on'); }
-
 function renderDeviceList() {
   document.getElementById('device-section').style.display = 'block';
   const entries = Object.entries(deviceRegistry).sort((a,b) => (b[1].isSuspect - a[1].isSuspect) || (b[1].lastRSSI - a[1].lastRSSI));
   document.getElementById('device-list').innerHTML = entries.map(([name, dev]) => {
-    const dur = Math.round((dev.lastSeen - dev.firstSeen) / 60000);
     const prox = rssiToProximity(dev.lastRSSI ?? -99);
-    const trackedText = Math.round(dev.stalkedDistance) > 0 ? ` · <b>${Math.round(dev.stalkedDistance)}m tracked</b>` : '';
+    const distText = dev.trackedDist > 0 ? ` · ${Math.round(dev.trackedDist)}m followed` : '';
     return `<div class="device-row ${dev.isSuspect ? 'suspect' : ''}">
       <div class="device-dot ${dev.isSuspect ? 's' : 'n'}"></div>
       <div style="flex:1; overflow:hidden;">
-        <div class="device-name">${name}</div>
-        <div class="device-meta">${dev.isSuspect ? '⚠️ SUSPECT · ' : ''}${dur > 0 ? dur + 'min' : 'Live'} · ${prox.split(' ')[0]}${trackedText}</div>
+        <div class="device-name" style="color:${dev.isSuspect ? '#be123c' : 'var(--text)'}">${name}</div>
+        <div class="device-meta">${dev.isSuspect ? '⚠️ SUSPECT · ' : ''}${prox.split(' ')[0]}${distText}</div>
       </div>
-      <div class="device-rssi-val" style="color:${dev.isSuspect ? '#f43f5e' : '#64748b'}">${dev.lastRSSI ?? '--'} dBm</div>
+      <div class="device-rssi-val" style="color:${dev.isSuspect ? '#e11d48' : '#64748b'}">${dev.lastRSSI ?? '--'} dBm</div>
     </div>`;
   }).join('');
 }
@@ -604,26 +586,33 @@ function renderPathPanel() {
   document.getElementById('path-panel').style.display = 'block';
   const recent = [...forensicLog].reverse().slice(0, 10);
   document.getElementById('path-log').innerHTML = recent.map(e => {
-    const ts = new Date(e.time).toLocaleTimeString('en-IN');
+    const ts = new Date(e.time).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
     return `<div class="path-row">
-      <div class="path-flag" style="background:${e.isSuspicious ? '#f43f5e' : '#10b981'}"></div>
+      <div class="path-flag" style="background:${e.isSuspicious ? '#e11d48' : '#059669'}"></div>
       <span style="color:#64748b;flex:1">${ts}</span>
-      <span style="color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${e.deviceName}</span>
-      <span style="font-family:var(--mono);color:${e.isSuspicious ? '#f43f5e' : '#10b981'};margin-left:8px">${e.rssi}dBm</span>
+      <span style="color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;font-weight:600">${e.deviceName}</span>
+      <span style="font-family:var(--mono);color:${e.isSuspicious ? '#e11d48' : '#059669'};margin-left:8px;font-weight:bold">${e.rssi}</span>
       ${e.isSuspicious ? '<span class="path-row-sus">⚠️</span>' : ''}
     </div>`;
   }).join('');
 }
 
-// ── REPLAY ──
+// ── REPLAY SYSTEM (Enhanced) ──
 function initReplay() {
   if (forensicLog.length < 2) { alert('Not enough data yet. Move around with the scanner active.'); return; }
+  
   forensicLog.sort((a,b) => a.time - b.time);
   document.getElementById('replay-panel').style.display = 'block';
+  
   const slider = document.getElementById('timeline-slider');
   slider.max = forensicLog.length - 1; slider.value = 0; replayIndex = 0;
+  
   if (replayPathLayer) leafMap.removeLayer(replayPathLayer);
-  replayPathLayer = L.polyline([], { color: '#7c3aed', dashArray: '6,9', weight: 3, opacity: .9 }).addTo(leafMap);
+  if (replayMarker) leafMap.removeLayer(replayMarker);
+  
+  replayPathLayer = L.polyline([], { color: '#6d28d9', dashArray: '5,10', weight: 4, opacity: 0.8 }).addTo(leafMap);
+  replayMarker = L.circleMarker([0,0], { radius: 8, color: '#fff', fillColor: '#6d28d9', fillOpacity: 1, weight: 2 });
+  
   seekTo(0);
 }
 
@@ -631,121 +620,136 @@ function seekTo(idx) {
   idx = Math.max(0, Math.min(idx, forensicLog.length - 1));
   replayIndex = idx;
   const e = forensicLog[idx];
-  if (e.lat !== 0) { userMarker.setLatLng([e.lat, e.lng]); leafMap.panTo([e.lat, e.lng]); }
-  if (replayPathLayer) replayPathLayer.setLatLngs(forensicLog.slice(0, idx+1).filter(p => p.lat !== 0).map(p => [p.lat, p.lng]));
-  if (e.isSuspicious && e.lat !== 0) L.circle([e.lat, e.lng], { radius: 5, color: '#f43f5e', fillOpacity: .5 }).addTo(leafMap);
+  
+  if (e.lat !== 0) { 
+    replayMarker.setLatLng([e.lat, e.lng]).addTo(leafMap);
+    leafMap.panTo([e.lat, e.lng]); 
+  }
+  
+  if (replayPathLayer) {
+      replayPathLayer.setLatLngs(forensicLog.slice(0, idx+1).filter(p => p.lat !== 0).map(p => [p.lat, p.lng]));
+  }
+
   document.getElementById('timeline-slider').value = idx;
   document.getElementById('replay-time').innerText = '🕐 ' + new Date(e.time).toLocaleTimeString('en-IN');
   document.getElementById('replay-pt').innerText = `Point ${idx+1}/${forensicLog.length}`;
-  document.getElementById('replay-rssi-lbl').innerText = `${e.rssi} dBm`;
-  document.getElementById('replay-flag').innerText = e.isSuspicious ? '⚠️' : '✓';
+  document.getElementById('replay-rssi-lbl').innerText = `${e.rssi} dBm ${e.isSuspicious ? '⚠️' : '✓'}`;
+  document.getElementById('replay-dist').innerText = `Stalked: ${e.trackedDistSnapshot || 0}m`;
 }
 
 document.getElementById('timeline-slider').addEventListener('input', e => { pauseReplay(); seekTo(parseInt(e.target.value)); });
+
 function playReplay() {
   if (replayInterval) clearInterval(replayInterval);
   if (replayIndex >= forensicLog.length - 1) replayIndex = 0;
   replayInterval = setInterval(() => {
     if (replayIndex >= forensicLog.length - 1) { clearInterval(replayInterval); replayInterval = null; return; }
     seekTo(++replayIndex);
-  }, 400); 
+  }, 350);
 }
 function pauseReplay() { if (replayInterval) { clearInterval(replayInterval); replayInterval = null; } }
-function resetReplay() { pauseReplay(); replayIndex = 0; if (replayPathLayer) replayPathLayer.setLatLngs([]); seekTo(0); }
+function resetReplay() { 
+    pauseReplay(); replayIndex = 0; 
+    if (replayPathLayer) replayPathLayer.setLatLngs([]); 
+    if (replayMarker) leafMap.removeLayer(replayMarker);
+    seekTo(0); 
+}
 
-// ── INTELLIGENT PDF REPORT ──
+// ── INSTANT SNAPSHOT PDF REPORT ──
 async function generateReport() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const now = new Date();
-  const bg = (d) => { d.setFillColor(8,12,20); d.rect(0,0,210,297,'F'); };
+  
+  // 1. FREEZE DATA (Instant Snapshot)
+  const reportTime = Date.now();
+  const pdfLogData = forensicLog.filter(e => e.time <= reportTime && e.isSuspicious);
+  const snapRegistry = JSON.parse(JSON.stringify(deviceRegistry));
+  const suspects = Object.entries(snapRegistry).filter(([,d])=>d.isSuspect);
 
-  const isSuspectLog = forensicLog.filter(e => e.isSuspicious);
-  const pdfLogData = isSuspectLog.length > 0 ? isSuspectLog : []; 
+  const bg = (d) => { d.setFillColor(248,250,252); d.rect(0,0,210,297,'F'); };
 
   // PAGE 1: SUMMARY
   bg(doc);
-  doc.setTextColor(240,240,240);
+  doc.setTextColor(15,23,42);
   doc.setFontSize(17); doc.setFont('helvetica','bold');
   doc.text('FORENSIC ANTI-STALKING REPORT', 15, 22);
   doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139);
-  doc.text('Forensic Shield — Intelligent Filter Active  |  ' + now.toLocaleString('en-IN'), 15, 30);
-  doc.setDrawColor(30,41,59); doc.line(15,34,195,34);
+  doc.text('Forensic Shield Data Export  |  ' + now.toLocaleString('en-IN'), 15, 30);
+  doc.setDrawColor(203,213,225); doc.line(15,34,195,34);
 
-  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(16,185,129);
+  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
   doc.text('INCIDENT SUMMARY', 15, 44);
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(200,210,220);
-  const suspects = Object.entries(deviceRegistry).filter(([,d])=>d.isSuspect);
-  doc.text(`Total User Movement   : ${Math.round(totalDist)} m`, 15, 54);
-  doc.text(`Session Duration      : ${Math.round((Date.now()-sessionStart)/60000)} minutes`, 15, 61);
-  doc.text(`Total Devices Scanned : ${Object.keys(deviceRegistry).length}`, 15, 68);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(15,23,42);
+  doc.text(`Total Distance Moved  : ${Math.round(totalDist)} m`, 15, 54);
+  doc.text(`Session Duration      : ${Math.round((reportTime-sessionStart)/60000)} minutes`, 15, 61);
+  doc.text(`Total Devices Scanned : ${Object.keys(snapRegistry).length}`, 15, 68);
   doc.text(`Suspects Identified   : ${suspects.length}`, 15, 75);
+  doc.text(`Critical Events Logged: ${pdfLogData.length} (Filtered snapshot)`, 15, 82);
 
   if (suspects.length > 0) {
-    doc.setDrawColor(244,63,94); doc.line(15,86,195,86);
-    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(244,100,100);
-    doc.text('SUSPECT DEVICE FORENSIC PROFILES', 15, 96);
-    let sy = 105;
+    doc.setDrawColor(225,29,72); doc.line(15,96,195,96);
+    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(225,29,72);
+    doc.text('SUSPECT DEVICE FORENSIC PROFILES', 15, 106);
+    let sy = 115;
     suspects.forEach(([name, dev]) => {
       if(sy > 260) { doc.addPage(); bg(doc); sy=15; }
       const dur = Math.round((dev.lastSeen-dev.firstSeen)/60000);
       const avg = Math.round(dev.readings.reduce((a,b)=>a+b.rssi,0)/dev.readings.length);
-      const vari = calcVariance(dev.readings.map(r=>r.rssi));
-      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(244,63,94);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(190,18,60);
       doc.text(name, 15, sy); sy+=7;
-      doc.setFont('helvetica','normal'); doc.setTextColor(200,210,220);
-      doc.text(`Distance Stalked : ${Math.round(dev.stalkedDistance)} meters physically tracked`, 18, sy); sy+=6;
-      doc.text(`Duration Nearby  : ${dur} minutes`, 18, sy); sy+=6;
-      doc.text(`Avg Signal       : ${avg} dBm — ${rssiToProximity(avg).replace(/[🔴🟠🟡🟢]/g,'').trim()}`, 18, sy); sy+=6;
-      doc.text(`RSSI Variance    : ${vari.toFixed(2)} dBm²`, 18, sy); sy+=6;
+      doc.setFont('helvetica','normal'); doc.setTextColor(15,23,42);
+      doc.text(`Distance Stalked: ${Math.round(dev.trackedDist)} meters`, 18, sy); sy+=6;
+      doc.text(`Duration Nearby : ${dur} minutes`, 18, sy); sy+=6;
+      doc.text(`Avg Signal      : ${avg} dBm — ${rssiToProximity(avg).replace(/[🔴🟠🟡🟢]/g,'').trim()}`, 18, sy); sy+=6;
       if (dev.suspectReasons) {
-        doc.setTextColor(244,180,100); doc.text('Evidence:', 18, sy); sy+=5;
-        dev.suspectReasons.forEach(r => { doc.text('  • '+r, 20, sy); sy+=5; }); doc.setTextColor(200,210,220);
+        doc.setTextColor(217,119,6); doc.text('Evidence triggers:', 18, sy); sy+=5;
+        dev.suspectReasons.forEach(r => { doc.text('  • '+r, 20, sy); sy+=5; }); doc.setTextColor(15,23,42);
       }
       sy+=8;
     });
   } else {
     doc.setTextColor(100,116,139);
-    doc.text('No suspicious tracking devices identified during this session.', 15, 96);
+    doc.text('No suspicious tracking devices identified during this session.', 15, 106);
   }
 
   // PAGE 2: TIMELINE & FILTERED LOG
   doc.addPage(); bg(doc);
-  doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(16,185,129);
+  doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
   doc.text('RSSI SIGNAL TIMELINE', 15, 16);
   const chartImg = document.getElementById('rssiChart').toDataURL('image/png');
   doc.addImage(chartImg,'PNG',15,22,180,62);
 
-  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(16,185,129);
+  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
   doc.text('SUSPECT PATH RECONSTRUCTION LOG', 15, 96);
   doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139);
   
   if (pdfLogData.length === 0) {
     doc.text('No suspect logs generated to print.', 15, 106);
   } else {
-    doc.text('TIME', 15, 104); doc.text('DEVICE', 45, 104); doc.text('RSSI', 105, 104);
-    doc.text('STALK DIST', 120, 104); doc.text('LAT,LNG', 155, 104); doc.text('FLAG', 190, 104);
-    doc.setDrawColor(30,41,59); doc.line(15,107,200,107);
+    doc.text('TIME', 15, 104); doc.text('DEVICE', 40, 104); doc.text('RSSI', 95, 104);
+    doc.text('STALKED', 110, 104); doc.text('LAT,LNG', 145, 104); doc.text('FLAG', 185, 104);
+    doc.setDrawColor(203,213,225); doc.line(15,107,200,107);
     let yp = 112;
     pdfLogData.forEach(e => {
       if (yp > 280) { doc.addPage(); bg(doc); yp = 15; }
-      doc.setTextColor(e.isSuspicious ? 244 : 180, e.isSuspicious ? 63 : 200, e.isSuspicious ? 94 : 210);
+      doc.setTextColor(e.isSuspicious ? 225 : 100, e.isSuspicious ? 29 : 116, e.isSuspicious ? 72 : 139);
       doc.text(new Date(e.time).toLocaleTimeString('en-IN'), 15, yp);
-      doc.text(e.deviceName.slice(0,25), 45, yp);
-      doc.text(String(e.rssi), 105, yp);
-      doc.text(Math.round(e.stalkedDistance)+'m', 120, yp);
-      if (e.lat!==0) doc.text(e.lat.toFixed(4)+','+e.lng.toFixed(4), 155, yp);
-      if (e.isSuspicious) doc.text('⚠ SUSPECT', 190, yp);
+      doc.text(e.deviceName.slice(0,25), 40, yp);
+      doc.text(String(e.rssi), 95, yp);
+      doc.text(String(e.trackedDistSnapshot || 0)+'m', 110, yp);
+      if (e.lat!==0) doc.text(e.lat.toFixed(4)+','+e.lng.toFixed(4), 145, yp);
+      if (e.isSuspicious) doc.text('⚠ SUSPECT', 185, yp);
       yp += 5;
     });
   }
 
   // PAGE 3: MAP
   leafMap.invalidateSize();
-  await new Promise(r => setTimeout(r, 700));
+  // Fast map render using html2canvas immediately (no heavy arbitrary timeout)
   html2canvas(document.getElementById('map'), { useCORS: true, scale: 2 }).then(canvas => {
     doc.addPage(); bg(doc);
-    doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(16,185,129);
+    doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(5,150,105);
     doc.text('GPS MOVEMENT MAP WITH TRACKING OVERLAY', 15, 15);
     doc.addImage(canvas.toDataURL('image/png'),'PNG',10,22,190,135);
     doc.save('ForensicShield_' + now.toISOString().slice(0,10) + '.pdf');
