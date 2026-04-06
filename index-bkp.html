@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Notes</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary: #6200ee;
+            --bg: #f5f5f5;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background: var(--bg);
+            transition: all 0.3s ease;
+        }
+
+        /* --- Notes UI (The Cover) --- */
+        #notes-app {
+            display: block;
+            padding: 20px;
+        }
+
+        .search-container {
+            margin-bottom: 20px;
+        }
+
+        #search-bar {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+
+        .note-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* --- Secret UI (The Tools) --- */
+        #secret-app {
+            display: none;
+            padding: 20px;
+            background: #fff;
+            min-height: 100vh;
+        }
+
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            background: var(--primary);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:active { transform: scale(0.98); }
+
+        #device-list {
+            list-style: none;
+            padding: 0;
+            border: 1px solid #eee;
+            max-height: 150px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        #device-list li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+
+        #map {
+            height: 400px;
+            width: 100%;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .status {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="notes-app">
+        <h2>My Notes</h2>
+        <div class="search-container">
+            <input type="text" id="search-bar" placeholder="Search notes...">
+        </div>
+        <div class="note-card"><strong>Shopping List</strong><br>Milk, Eggs, Bread...</div>
+        <div class="note-card"><strong>Project Idea</strong><br>Build a hidden utility app for sensors.</div>
+        <div class="note-card"><strong>Reminder</strong><br>Call Mom at 5 PM.</div>
+    </div>
+
+    <div id="secret-app">
+        <h2>System Diagnostic Mode</h2>
+        
+        <div class="control-panel">
+            <button onclick="scanBluetooth()">Scan Bluetooth</button>
+            <button onclick="toggleGPS()" id="gps-btn">Start GPS Tracking</button>
+            <button onclick="location.reload()" style="background:#f44336">Lock App</button>
+        </div>
+
+        <div id="bt-status" class="status">Bluetooth: Idle</div>
+        <ul id="device-list">
+            <li>No devices found yet.</li>
+        </ul>
+
+        <div id="gps-status" class="status">GPS: Off</div>
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // --- Logic to switch apps ---
+        const searchBar = document.getElementById('search-bar');
+        const notesApp = document.getElementById('notes-app');
+        const secretApp = document.getElementById('secret-app');
+
+        searchBar.addEventListener('input', (e) => {
+            if (e.target.value === '6426') {
+                notesApp.style.display = 'none';
+                secretApp.style.display = 'block';
+                initMap(); // Initialize map when revealed
+            }
+        });
+
+        // --- Bluetooth Logic ---
+        async function scanBluetooth() {
+            const list = document.getElementById('device-list');
+            const status = document.getElementById('bt-status');
+            
+            try {
+                status.innerText = "Bluetooth: Requesting device...";
+                // Browser security: Requires user gesture (click) and opens a system dialog
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true
+                });
+
+                list.innerHTML = ''; // Clear list
+                const li = document.createElement('li');
+                li.innerText = `Connected to: ${device.name || 'Unnamed Device'} (${device.id})`;
+                list.appendChild(li);
+                status.innerText = "Bluetooth: Device selected.";
+            } catch (error) {
+                status.innerText = "Bluetooth Error: " + error.message;
+            }
+        }
+
+        // --- GPS Logic ---
+        let map, marker, path, watchId = null;
+        let coordsHistory = [];
+
+        function initMap() {
+            // Default view (London) until GPS hits
+            map = L.map('map').setView([51.505, -0.09], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+
+            marker = L.marker([51.505, -0.09]).addTo(map);
+            path = L.polyline([], {color: 'blue'}).addTo(map);
+        }
+
+        function toggleGPS() {
+            const btn = document.getElementById('gps-btn');
+            const status = document.getElementById('gps-status');
+
+            if (watchId === null) {
+                if (!navigator.geolocation) {
+                    alert("Geolocation not supported");
+                    return;
+                }
+
+                btn.innerText = "Stop GPS Tracking";
+                btn.style.background = "#ff9800";
+                
+                watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        const { latitude, longitude, accuracy } = position.coords;
+                        const newPos = [latitude, longitude];
+
+                        // Update Marker and Map
+                        marker.setLatLng(newPos);
+                        map.setView(newPos, 16);
+
+                        // Update Trace
+                        coordsHistory.push(newPos);
+                        path.setLatLngs(coordsHistory);
+
+                        status.innerText = `GPS: Active (Accuracy: ${Math.round(accuracy)}m)`;
+                    },
+                    (err) => {
+                        status.innerText = "GPS Error: " + err.message;
+                    },
+                    { enableHighAccuracy: true }
+                );
+            } else {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                btn.innerText = "Start GPS Tracking";
+                btn.style.background = "var(--primary)";
+                status.innerText = "GPS: Stopped";
+            }
+        }
+    </script>
+</body>
+</html>

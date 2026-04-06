@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Notes</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root { --primary: #6200ee; --bg: #f5f5f5; --danger: #ff1744; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); }
+        
+        /* Notes Cover */
+        #notes-app { display: block; padding: 20px; }
+        .search-container { margin-bottom: 20px; }
+        #search-bar { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
+        .note-card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+        /* Secret App */
+        #secret-app { display: none; padding: 20px; background: #121212; color: white; min-height: 100vh; }
+        .control-panel { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 5px; background: var(--primary); color: white; font-weight: bold; cursor: pointer; min-width: 140px; }
+        
+        #alert-zone { margin: 10px 0; }
+        .stalker-alert { background: var(--danger); color: white; padding: 15px; border-radius: 8px; font-weight: bold; animation: pulse 1.5s infinite; text-align: center; }
+        
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+
+        .stats { display: flex; justify-content: space-between; font-size: 14px; color: #bbb; margin-bottom: 10px; }
+        #map { height: 350px; width: 100%; border-radius: 12px; margin-top: 10px; }
+        .status { font-size: 11px; color: #888; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="notes-app">
+        <h2>My Notes</h2>
+        <div class="search-container">
+            <input type="text" id="search-bar" placeholder="Search notes...">
+        </div>
+        <div class="note-card"><strong>Shopping List</strong><br>Milk, Eggs, Bread...</div>
+        <div class="note-card"><strong>Project Idea</strong><br>Build a hidden utility app for sensors.</div>
+    </div>
+
+    <div id="secret-app">
+        <h2 style="color: #00e676;">Stalker Shield Active</h2>
+        
+        <div id="alert-zone"></div>
+
+        <div class="stats">
+            <span>Devices in Range: <b id="dev-count">0</b></span>
+            <span>Moved: <b id="dist-count">0</b>m</span>
+        </div>
+
+        <div class="control-panel">
+            <button onclick="activateShield()" id="shield-btn">🛡️ Start Scan</button>
+            <button onclick="location.reload()" style="background:#444">Lock</button>
+        </div>
+
+        <div id="bt-status" class="status">BLE: Ready</div>
+        <div id="gps-status" class="status">GPS: Idle</div>
+        
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        const searchBar = document.getElementById('search-bar');
+        const notesApp = document.getElementById('notes-app');
+        const secretApp = document.getElementById('secret-app');
+
+        // State Variables
+        let map, marker, path, watchId = null;
+        let coordsHistory = [];
+        let totalDistance = 0;
+        let lastCoord = null;
+        let signalStore = new Map(); // id -> { name, rssiHistory }
+
+        searchBar.addEventListener('input', (e) => {
+            if (e.target.value === '6426') {
+                notesApp.style.display = 'none';
+                secretApp.style.display = 'block';
+                initMap();
+            }
+        });
+
+        function initMap() {
+            map = L.map('map').setView([0, 0], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            marker = L.marker([0, 0]).addTo(map);
+            path = L.polyline([], {color: '#00e676', weight: 4}).addTo(map);
+        }
+
+        async function activateShield() {
+            const btn = document.getElementById('shield-btn');
+            btn.disabled = true;
+            btn.innerText = "Shield Engaged";
+            btn.style.background = "#00e676";
+            btn.style.color = "#000";
+
+            // 1. Start GPS Tracking
+            startGPSTracking();
+
+            // 2. Start BLE Background Scan (Experimental API)
+            try {
+                const scan = await navigator.bluetooth.requestLEScan({
+                    acceptAllAdvertisements: true
+                });
+
+                document.getElementById('bt-status').innerText = "BLE: Scanning Advertisements...";
+
+                navigator.bluetooth.addEventListener('advertisementreceived', event => {
+                    processSignal(event);
+                });
+
+            } catch (err) {
+                document.getElementById('bt-status').innerText = "BLE Error: " + err.message;
+                console.error(err);
+            }
+        }
+
+        function startGPSTracking() {
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    const currentPos = [latitude, longitude];
+
+                    if (lastCoord) {
+                        const dist = calculateDistance(lastCoord[0], lastCoord[1], latitude, longitude);
+                        totalDistance += dist;
+                        document.getElementById('dist-count').innerText = Math.round(totalDistance);
+                    }
+
+                    lastCoord = currentPos;
+                    marker.setLatLng(currentPos);
+                    map.setView(currentPos, 17);
+                    coordsHistory.push(currentPos);
+                    path.setLatLngs(coordsHistory);
+                    document.getElementById('gps-status').innerText = "GPS: Tracking...";
+                },
+                null, { enableHighAccuracy: true }
+            );
+        }
+
+        function processSignal(event) {
+            const id = event.device.id;
+            const rssi = event.rssi;
+            const name = event.device.name || "Unknown Device";
+
+            if (!signalStore.has(id)) {
+                signalStore.set(id, { name: name, rssiHistory: [] });
+            }
+
+            const data = signalStore.get(id);
+            data.rssiHistory.push(rssi);
+            
+            // Keep last 10 readings
+            if (data.rssiHistory.length > 10) data.rssiHistory.shift();
+            
+            document.getElementById('dev-count').innerText = signalStore.size;
+
+            // STALKER LOGIC
+            // If we have moved > 20 meters and this device signal is still "stable"
+            if (totalDistance > 20 && data.rssiHistory.length >= 5) {
+                const variance = calculateVariance(data.rssiHistory);
+                
+                // If variance is low (< 10), it means the device is maintaining 
+                // the same distance from you while you are moving.
+                if (variance < 10) {
+                    triggerAlert(data.name);
+                }
+            }
+        }
+
+        function triggerAlert(deviceName) {
+            const zone = document.getElementById('alert-zone');
+            navigator.vibrate([200, 100, 200, 100, 400]);
+            zone.innerHTML = `<div class="stalker-alert">⚠️ TRACKER DETECTED: ${deviceName} is following you!</div>`;
+        }
+
+        function calculateVariance(array) {
+            const n = array.length;
+            const mean = array.reduce((a, b) => a + b) / n;
+            return array.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / n;
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth radius in meters
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+    </script>
+</body>
+</html>
