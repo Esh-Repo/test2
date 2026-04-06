@@ -9,6 +9,7 @@
         :root {
             --primary: #6200ee;
             --bg: #f5f5f5;
+            --danger: #ff1744;
         }
 
         body {
@@ -99,6 +100,19 @@
             color: #666;
             margin-top: 5px;
         }
+
+        /* Stalker Alert Style */
+        .stalker-alert {
+            background: var(--danger);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            text-align: center;
+            animation: blinker 1s linear infinite;
+        }
+        @keyframes blinker { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
@@ -116,9 +130,12 @@
     <div id="secret-app">
         <h2>System Diagnostic Mode</h2>
         
+        <div id="alert-zone"></div>
+
         <div class="control-panel">
             <button onclick="scanBluetooth()">Scan Bluetooth</button>
             <button onclick="toggleGPS()" id="gps-btn">Start GPS Tracking</button>
+            <button onclick="activateShield()" id="shield-btn" style="background:#00c853">🛡️ Activate Shield</button>
             <button onclick="location.reload()" style="background:#f44336">Lock App</button>
         </div>
 
@@ -143,23 +160,23 @@
             if (e.target.value === '6426') {
                 notesApp.style.display = 'none';
                 secretApp.style.display = 'block';
-                initMap(); // Initialize map when revealed
+                initMap(); 
             }
         });
+
+        // --- Stalker Detection Variables ---
+        let signals = {}; // Stores RSSI history
+        let totalDistance = 0;
+        let lastPos = null;
 
         // --- Bluetooth Logic ---
         async function scanBluetooth() {
             const list = document.getElementById('device-list');
             const status = document.getElementById('bt-status');
-            
             try {
                 status.innerText = "Bluetooth: Requesting device...";
-                // Browser security: Requires user gesture (click) and opens a system dialog
-                const device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true
-                });
-
-                list.innerHTML = ''; // Clear list
+                const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
+                list.innerHTML = '';
                 const li = document.createElement('li');
                 li.innerText = `Connected to: ${device.name || 'Unnamed Device'} (${device.id})`;
                 list.appendChild(li);
@@ -169,17 +186,57 @@
             }
         }
 
+        // --- NEW: Passive Stalker Shield Logic ---
+        async function activateShield() {
+            const status = document.getElementById('bt-status');
+            const btn = document.getElementById('shield-btn');
+            try {
+                const scan = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true });
+                btn.innerText = "Shield Active";
+                btn.style.background = "#aaa";
+                status.innerText = "BLE: Scanning for trackers...";
+
+                navigator.bluetooth.addEventListener('advertisementreceived', event => {
+                    const deviceId = event.device.id;
+                    const rssi = event.rssi;
+
+                    if (!signals[deviceId]) signals[deviceId] = [];
+                    signals[deviceId].push({ rssi: rssi, time: Date.now() });
+                    if (signals[deviceId].length > 20) signals[deviceId].shift();
+
+                    detectStalker(deviceId, event.device.name || "Unknown Device");
+                });
+            } catch (err) {
+                alert("Shield requires Chrome Flags (Experimental Web Platform) enabled.");
+            }
+        }
+
+        function detectStalker(deviceId, name) {
+            const history = signals[deviceId];
+            if (history.length < 5 || totalDistance < 20) return;
+
+            // Calculate Variance
+            const rssiValues = history.map(h => h.rssi);
+            const mean = rssiValues.reduce((a, b) => a + b) / rssiValues.length;
+            const variance = rssiValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / rssiValues.length;
+
+            // CORE LOGIC: variance < 5 and distance > 20
+            if (variance < 5) {
+                navigator.vibrate([200, 100, 200, 100, 400]);
+                document.getElementById('alert-zone').innerHTML = 
+                    `<div class="stalker-alert">⚠️ Possible tracking device (${name}) moving with you</div>`;
+            }
+        }
+
         // --- GPS Logic ---
         let map, marker, path, watchId = null;
         let coordsHistory = [];
 
         function initMap() {
-            // Default view (London) until GPS hits
             map = L.map('map').setView([51.505, -0.09], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap'
             }).addTo(map);
-
             marker = L.marker([51.505, -0.09]).addTo(map);
             path = L.polyline([], {color: 'blue'}).addTo(map);
         }
@@ -189,11 +246,7 @@
             const status = document.getElementById('gps-status');
 
             if (watchId === null) {
-                if (!navigator.geolocation) {
-                    alert("Geolocation not supported");
-                    return;
-                }
-
+                if (!navigator.geolocation) { alert("Geolocation not supported"); return; }
                 btn.innerText = "Stop GPS Tracking";
                 btn.style.background = "#ff9800";
                 
@@ -202,19 +255,19 @@
                         const { latitude, longitude, accuracy } = position.coords;
                         const newPos = [latitude, longitude];
 
-                        // Update Marker and Map
+                        // Calculate distance moved for stalker logic
+                        if (lastPos) {
+                            totalDistance += calculateDistance(lastPos[0], lastPos[1], latitude, longitude);
+                        }
+                        lastPos = newPos;
+
                         marker.setLatLng(newPos);
                         map.setView(newPos, 16);
-
-                        // Update Trace
                         coordsHistory.push(newPos);
                         path.setLatLngs(coordsHistory);
-
-                        status.innerText = `GPS: Active (Accuracy: ${Math.round(accuracy)}m)`;
+                        status.innerText = `GPS: Active (${Math.round(totalDistance)}m moved)`;
                     },
-                    (err) => {
-                        status.innerText = "GPS Error: " + err.message;
-                    },
+                    (err) => { status.innerText = "GPS Error: " + err.message; },
                     { enableHighAccuracy: true }
                 );
             } else {
@@ -224,6 +277,16 @@
                 btn.style.background = "var(--primary)";
                 status.innerText = "GPS: Stopped";
             }
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; 
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
     </script>
 </body>
