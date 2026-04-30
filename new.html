@@ -3,123 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Cam Pro - Batch Mode</title>
+    <title>GPS Cam Pro v4</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         :root {
-            --glass: rgba(0, 0, 0, 0.4);
-            --glass-border: rgba(255, 255, 255, 0.2);
+            --glass: rgba(15, 15, 15, 0.6);
+            --border: rgba(255, 255, 255, 0.2);
+            --accent: #007AFF;
         }
 
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            background: #000; font-family: sans-serif; color: white; overflow: hidden;
+            background: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: white; overflow: hidden;
         }
 
-        #setup-screen {
-            position: fixed; inset: 0; background: #111; z-index: 100;
+        /* Loading Screen */
+        #splash {
+            position: fixed; inset: 0; background: #000; z-index: 100;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
         }
 
-        #camera-view { position: relative; height: 100vh; width: 100vw; display: none; }
-        
+        /* Camera View */
+        #viewport { position: relative; width: 100vw; height: 100vh; display: none; }
         video { width: 100%; height: 100%; object-fit: cover; }
 
-        /* Glassmorphic Panel */
-        #ui-panel {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 500px;
-            background: var(--glass); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
-            border: 1px solid var(--glass-border); border-radius: 20px;
-            padding: 15px; display: flex; align-items: center; gap: 15px; z-index: 10;
+        /* UI Overlays */
+        .top-bar {
+            position: absolute; top: 0; width: 100%; padding: 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+            box-sizing: border-box; z-index: 10;
         }
 
-        #mini-map { width: 90px; height: 90px; border-radius: 12px; flex-shrink: 0; }
-
-        .info h2 { margin: 0; font-size: 0.9rem; letter-spacing: 0.5px; }
-        .info p { margin: 4px 0 0; font-size: 0.7rem; font-family: monospace; opacity: 0.8; }
-
-        /* Counter Badge */
-        #counter {
-            position: absolute; top: 20px; right: 20px;
-            background: rgba(255, 0, 0, 0.7); padding: 5px 15px;
-            border-radius: 20px; font-weight: bold; font-size: 0.8rem;
+        #batch-count {
+            background: var(--accent); padding: 4px 12px; border-radius: 20px;
+            font-size: 12px; font-weight: bold; text-transform: uppercase;
         }
 
-        /* Shutter */
-        #shutter-container {
-            position: absolute; bottom: 170px; width: 100%;
-            display: flex; justify-content: center;
+        /* Bottom Controls */
+        .controls {
+            position: absolute; bottom: 40px; width: 100%;
+            display: flex; justify-content: space-around; align-items: center;
+            z-index: 10;
         }
+
+        .btn-round {
+            width: 50px; height: 50px; border-radius: 50%;
+            background: var(--glass); border: 1px solid var(--border);
+            backdrop-filter: blur(10px); color: white;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+        }
+
         #shutter {
-            width: 75px; height: 75px; background: white; border-radius: 50%;
-            border: 5px solid rgba(255,255,255,0.3); outline: none;
+            width: 80px; height: 80px; background: white;
+            border: 6px solid rgba(255,255,255,0.3);
         }
-        #shutter:active { transform: scale(0.9); background: #ddd; }
+        #shutter:active { transform: scale(0.9); background: #ccc; }
 
+        /* Real-time Glass Card */
+        #data-card {
+            position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%);
+            width: 85%; max-width: 400px;
+            background: var(--glass); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            border: 1px solid var(--border); border-radius: 18px;
+            padding: 12px; display: flex; gap: 12px; align-items: center;
+        }
+
+        #mini-map { width: 80px; height: 80px; border-radius: 10px; flex-shrink: 0; pointer-events: none; }
+        .meta h3 { margin: 0; font-size: 14px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .meta p { margin: 4px 0 0; font-size: 10px; font-family: monospace; opacity: 0.7; }
+
+        /* Hidden Processing Canvas */
         canvas { display: none; }
-        .btn { background: #007AFF; color: white; border: none; padding: 15px 30px; border-radius: 25px; font-size: 1rem; }
+
+        /* Simple animation for zip generation */
+        .loading-spinner {
+            border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid #fff;
+            border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite;
+            display: none;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-<div id="setup-screen">
-    <h2>GPS Map Camera</h2>
-    <p>Ready to capture high-quality geotagged pics</p>
-    <button class="btn" onclick="startApp()">Open Camera</button>
+<div id="splash">
+    <h1 style="letter-spacing: 2px;">GPS CAM PRO</h1>
+    <p style="opacity: 0.5; margin-bottom: 30px;">High-Precision Geotagging</p>
+    <button onclick="init()" style="background:var(--accent); color:white; border:none; padding:15px 40px; border-radius:30px; font-weight:bold;">START LENS</button>
 </div>
 
-<div id="camera-view">
-    <div id="counter">Pics: 0 / 5</div>
-    <video id="video" autoplay playsinline muted></video>
-    
-    <div id="shutter-container">
-        <button id="shutter"></button>
+<div id="viewport">
+    <div class="top-bar">
+        <div id="batch-count">Queue: 0 / 5</div>
+        <div id="zip-loader" class="loading-spinner"></div>
     </div>
 
-    <div id="ui-panel">
+    <video id="video" autoplay playsinline muted></video>
+
+    <div id="data-card">
         <div id="mini-map"></div>
-        <div class="info">
-            <h2 id="addr">Locating...</h2>
-            <p id="coords">0.0000, 0.0000</p>
-            <p id="timestamp">--:--</p>
+        <div class="meta">
+            <h3 id="ui-addr">Locating...</h3>
+            <p id="ui-coords">0.000000, 0.000000</p>
+            <p id="ui-time">--:--:--</p>
         </div>
     </div>
+
+    <div class="controls">
+        <button class="btn-round" onclick="toggleCamera()">🔄</button>
+        <button id="shutter" class="btn-round"></button>
+        <div class="btn-round" style="opacity: 0.3;">🖼️</div>
+    </div>
 </div>
 
-<canvas id="canvas"></canvas>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<canvas id="main-canvas"></canvas>
 
 <script>
+    let currentFacingMode = "environment";
+    let videoStream = null;
     let map, marker;
-    let photoBuffer = [];
+    let photoQueue = [];
     const video = document.getElementById('video');
-    const counterDisplay = document.getElementById('counter');
+    const zip = new JSZip();
 
-    async function startApp() {
-        document.getElementById('setup-screen').style.display = 'none';
-        document.getElementById('camera-view').style.display = 'block';
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { 
-                    facingMode: "environment",
-                    width: { ideal: 4096 }, // Asking for 4K
-                    height: { ideal: 2160 }
-                }
-            });
-            video.srcObject = stream;
-        } catch (e) { alert("Camera Error: " + e.message); }
-
-        initGPS();
+    async function init() {
+        document.getElementById('splash').style.display = 'none';
+        document.getElementById('viewport').style.display = 'block';
+        await startCamera();
+        startGPS();
     }
 
-    function initGPS() {
+    async function startCamera() {
+        if (videoStream) {
+            videoStream.getTracks().forEach(track => track.stop());
+        }
+        try {
+            videoStream = await navigator.mediaDevices.getUserMedia({
+                video: { 
+                    facingMode: currentFacingMode,
+                    width: { ideal: 3840 }, 
+                    height: { ideal: 2160 } 
+                }
+            });
+            video.srcObject = videoStream;
+        } catch (e) {
+            alert("Camera Error: " + e.message);
+        }
+    }
+
+    function toggleCamera() {
+        currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+        startCamera();
+    }
+
+    function startGPS() {
         navigator.geolocation.watchPosition(async (pos) => {
             const { latitude, longitude } = pos.coords;
-            document.getElementById('coords').innerText = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-            document.getElementById('timestamp').innerText = new Date().toLocaleString();
+            const latStr = latitude.toFixed(6);
+            const lonStr = longitude.toFixed(6);
+            const timeStr = new Date().toLocaleString();
+
+            document.getElementById('ui-coords').innerText = `${latStr}, ${lonStr}`;
+            document.getElementById('ui-time').innerText = timeStr;
 
             if (!map) {
                 map = L.map('mini-map', { zoomControl: false, attributionControl: false }).setView([latitude, longitude], 16);
@@ -130,64 +182,85 @@
                 marker.setLatLng([latitude, longitude]);
             }
 
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-            const data = await res.json();
-            document.getElementById('addr').innerText = data.address.road || data.address.suburb || "Location Found";
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                const data = await res.json();
+                document.getElementById('ui-addr').innerText = data.name || data.address.road || "Unknown Road";
+            } catch (e) {}
         }, null, { enableHighAccuracy: true });
     }
 
     document.getElementById('shutter').onclick = async () => {
-        const canvas = document.getElementById('canvas');
+        if (photoQueue.length >= 5) return;
+
+        const canvas = document.getElementById('main-canvas');
         const ctx = canvas.getContext('2d');
-        
-        // Match camera resolution
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
-        // 1. Draw Video Frame (The Photo)
-        // Adding a slight sharpen effect
-        ctx.filter = "contrast(1.05) saturate(1.1)"; 
+        // 1. Capture Video Frame
+        ctx.filter = "contrast(1.08) saturate(1.1) brightness(1.02)"; // Pro look enhancement
         ctx.drawImage(video, 0, 0);
         ctx.filter = "none";
 
-        // 2. Capture the Mini Map using html2canvas
+        // 2. Capture Map Visual
         const mapElement = document.getElementById('mini-map');
-        const mapCanvas = await html2canvas(mapElement, { useCORS: true });
+        const mapCanvas = await html2canvas(mapElement, { useCORS: true, scale: 2 });
 
-        // 3. Draw UI Overlay on the Canvas
-        const barHeight = canvas.height * 0.15;
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-        ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+        // 3. Pro Watermark Design (Bottom-Right Card)
+        const cardW = canvas.width * 0.35;
+        const cardH = cardW * 0.35;
+        const margin = 50;
+        const x = canvas.width - cardW - margin;
+        const y = canvas.height - cardH - margin;
 
-        // Draw the map onto the final photo
-        const mapSize = barHeight - 40;
-        ctx.drawImage(mapCanvas, 40, canvas.height - barHeight + 20, mapSize, mapSize);
+        // Draw Card Background
+        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+        ctx.beginPath();
+        ctx.roundRect(x, y, cardW, cardH, 30);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-        // Draw Text
+        // Draw Map on Card
+        const mapSize = cardH - 30;
+        ctx.drawImage(mapCanvas, x + 15, y + 15, mapSize, mapSize);
+
+        // Draw Text on Card
         ctx.fillStyle = "white";
-        ctx.font = `bold ${canvas.width/35}px sans-serif`;
-        ctx.fillText(document.getElementById('addr').innerText, mapSize + 80, canvas.height - barHeight + 60);
+        const fontSize = cardH * 0.18;
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.fillText(document.getElementById('ui-addr').innerText.substring(0, 20), x + mapSize + 35, y + fontSize + 25);
         
-        ctx.font = `${canvas.width/50}px monospace`;
-        ctx.fillText(document.getElementById('coords').innerText, mapSize + 80, canvas.height - barHeight + 110);
-        ctx.fillText(document.getElementById('timestamp').innerText, mapSize + 80, canvas.height - barHeight + 150);
+        ctx.font = `${fontSize * 0.7}px monospace`;
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.fillText(document.getElementById('ui-coords').innerText, x + mapSize + 35, y + fontSize * 2.5 + 25);
+        ctx.fillText(document.getElementById('ui-time').innerText, x + mapSize + 35, y + fontSize * 3.8 + 25);
 
-        // Save to Buffer
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        photoBuffer.push(imgData);
-        counterDisplay.innerText = `Pics: ${photoBuffer.length} / 5`;
+        // 4. Add to ZIP Queue
+        const imgBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        photoQueue.push(imgBlob);
+        document.getElementById('batch-count').innerText = `Queue: ${photoQueue.length} / 5`;
 
-        // Check if we hit 5 pics
-        if (photoBuffer.length >= 5) {
-            alert("5 Photos captured! Starting download batch...");
-            photoBuffer.forEach((data, index) => {
-                const link = document.createElement('a');
-                link.href = data;
-                link.download = `GPS_BATCH_${index + 1}_${Date.now()}.jpg`;
-                link.click();
+        // 5. ZIP Processing
+        if (photoQueue.length === 5) {
+            document.getElementById('zip-loader').style.display = 'block';
+            photoQueue.forEach((blob, i) => {
+                zip.file(`GPS_Photo_${i+1}.jpg`, blob);
             });
-            photoBuffer = []; // Reset
-            counterDisplay.innerText = `Pics: 0 / 5`;
+
+            const content = await zip.generateAsync({type:"blob"});
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `GPS_Photos_Batch_${Date.now()}.zip`;
+            link.click();
+
+            // Reset
+            photoQueue = [];
+            document.getElementById('batch-count').innerText = `Queue: 0 / 5`;
+            document.getElementById('zip-loader').style.display = 'none';
+            alert("Batch ZIP Downloaded!");
         }
     };
 </script>
