@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Glass GPS Cam</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --glass: rgba(255, 255, 255, 0.2);
+            --glass-border: rgba(255, 255, 255, 0.3);
+            --blur: 15px;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+
+        #camera-container {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* The Glassmorphic Overlay */
+        #info-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 500px;
+            background: var(--glass);
+            backdrop-filter: blur(var(--blur));
+            -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: white;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            z-index: 10;
+        }
+
+        #text-data {
+            flex: 1;
+        }
+
+        #text-data h2 {
+            margin: 0; font-size: 1rem; font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #text-data p {
+            margin: 4px 0 0; font-size: 0.75rem; opacity: 0.9;
+            font-family: monospace;
+        }
+
+        #mini-map {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            background: #333;
+            border: 1px solid var(--glass-border);
+        }
+
+        /* Capture Button */
+        #capture-btn {
+            position: absolute;
+            bottom: 140px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 70px;
+            height: 70px;
+            background: white;
+            border-radius: 50%;
+            border: 5px solid rgba(255,255,255,0.3);
+            cursor: pointer;
+            z-index: 11;
+            transition: transform 0.2s;
+        }
+
+        #capture-btn:active {
+            transform: translateX(-50%) scale(0.9);
+        }
+
+        /* Canvas is hidden, used for processing the final image */
+        canvas { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="camera-container">
+    <video id="video" autoplay playsinline></video>
+    
+    <div id="info-overlay">
+        <div id="text-data">
+            <h2 id="loc-name">Fetching location...</h2>
+            <p id="coords">0.0000° N, 0.0000° E</p>
+            <p id="timestamp"></p>
+        </div>
+        <div id="mini-map"></div>
+    </div>
+
+    <button id="capture-btn"></button>
+</div>
+
+<canvas id="output-canvas"></canvas>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const video = document.getElementById('video');
+    const locName = document.getElementById('loc-name');
+    const coordsText = document.getElementById('coords');
+    const timeText = document.getElementById('timestamp');
+    const captureBtn = document.getElementById('capture-btn');
+    const canvas = document.getElementById('output-canvas');
+    
+    let map;
+    let marker;
+
+    // 1. Initialize Camera
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, 
+                audio: false 
+            });
+            video.srcObject = stream;
+        } catch (err) {
+            alert("Camera access denied or not available.");
+        }
+    }
+
+    // 2. Initialize Map
+    function initMap(lat, lon) {
+        map = L.map('mini-map', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([lat, lon], 15);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        marker = L.marker([lat, lon]).addTo(map);
+    }
+
+    // 3. Get GPS Data
+    function updateLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(async (position) => {
+                const { latitude, longitude } = position.coords;
+                coordsText.innerText = `${latitude.toFixed(4)}° N, ${longitude.toFixed(4)}° E`;
+                timeText.innerText = new Date().toLocaleString();
+
+                if (!map) {
+                    initMap(latitude, longitude);
+                } else {
+                    map.setView([latitude, longitude]);
+                    marker.setLatLng([latitude, longitude]);
+                }
+
+                // Reverse Geocoding (get address name)
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                    const data = await res.json();
+                    locName.innerText = data.address.city || data.address.town || data.address.village || "Unknown Location";
+                } catch (e) {
+                    locName.innerText = "Location Found";
+                }
+            }, (err) => console.error(err), { enableHighAccuracy: true });
+        }
+    }
+
+    // 4. Capture and Download Image with Overlay
+    captureBtn.addEventListener('click', () => {
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Draw Video Frame
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Simple Watermark Logic (Manual Draw for the "Burned-in" look)
+        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+        ctx.fillRect(0, canvas.height - 150, canvas.width, 150);
+        ctx.fillStyle = "white";
+        ctx.font = "bold 40px sans-serif";
+        ctx.fillText(locName.innerText, 50, canvas.height - 90);
+        ctx.font = "30px monospace";
+        ctx.fillText(coordsText.innerText + " | " + timeText.innerText, 50, canvas.height - 40);
+
+        // Download the result
+        const link = document.createElement('a');
+        link.download = `GPS_Photo_${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    });
+
+    initCamera();
+    updateLocation();
+</script>
+
+</body>
+</html>
