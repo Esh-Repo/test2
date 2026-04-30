@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>GPS Cam Pro v4.2</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        :root {
+            --glass: rgba(0, 0, 0, 0.7);
+            --border: rgba(255, 255, 255, 0.2);
+            --accent: #007AFF;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: #000; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            color: white; overflow: hidden;
+        }
+
+        /* Video Container - Handling Brave/Chrome UI bars */
+        #viewport { 
+            position: relative; 
+            width: 100vw; 
+            height: 100vh; 
+            height: calc(100vh - env(safe-area-inset-bottom));
+            overflow: hidden; 
+        }
+        
+        video { 
+            width: 100%; height: 100%; object-fit: cover; 
+            transition: transform 0.1s ease-out;
+        }
+
+        /* Sidebar Photo Stream - Improved Visibility */
+        #sidebar {
+            position: absolute; 
+            right: 15px; 
+            top: 60px; 
+            bottom: 220px;
+            width: 80px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px;
+            overflow-y: auto; 
+            z-index: 50; 
+            scrollbar-width: none;
+            padding: 10px 0;
+        }
+        #sidebar::-webkit-scrollbar { display: none; }
+        .thumb {
+            width: 70px; height: 70px; border-radius: 12px; 
+            border: 2px solid white; object-fit: cover; 
+            box-shadow: 0 8px 15px rgba(0,0,0,0.6);
+            animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* Zoom Slider */
+        #zoom-container {
+            position: absolute; left: 15px; top: 40%; transform: translateY(-50%);
+            height: 200px; display: flex; flex-direction: column; align-items: center; z-index: 50;
+        }
+        #zoom-slider {
+            appearance: none; width: 6px; height: 180px; background: rgba(255,255,255,0.2);
+            border-radius: 10px; writing-mode: bt-lr; -webkit-appearance: slider-vertical;
+        }
+
+        /* Bigger Glassmorphic Card */
+        #overlay-card {
+            position: absolute; 
+            bottom: 140px; /* Raised to avoid bottom bar */
+            left: 50%; 
+            transform: translateX(-50%);
+            width: 94%; 
+            max-width: 480px;
+            background: var(--glass); 
+            backdrop-filter: blur(25px); 
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--border); 
+            border-radius: 20px;
+            padding: 18px; 
+            display: flex; 
+            gap: 18px; 
+            align-items: center; 
+            z-index: 40;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        }
+        #mini-map { 
+            width: 110px; height: 110px; 
+            border-radius: 14px; flex-shrink: 0; 
+            background: #111; border: 1px solid var(--border);
+        }
+        .meta { flex: 1; min-width: 0; }
+        .meta h3 { margin: 0; font-size: 18px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .meta p { margin: 6px 0 0; font-size: 12px; opacity: 0.95; line-height: 1.5; font-family: 'Courier New', Courier, monospace; }
+        .flag { font-size: 20px; vertical-align: middle; }
+
+        /* Interaction Bar - Fixed for Brave */
+        .bottom-bar {
+            position: absolute; 
+            bottom: 0; 
+            width: 100%; 
+            height: 120px;
+            padding-bottom: env(safe-area-inset-bottom);
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            display: flex; 
+            justify-content: space-around; 
+            align-items: center; 
+            z-index: 60;
+        }
+        .shutter-outer {
+            width: 84px; height: 84px; border-radius: 50%; border: 4px solid white;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #shutter-btn {
+            width: 70px; height: 70px; background: white; border-radius: 50%; border: none;
+            transition: transform 0.1s; box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+        }
+        #shutter-btn:active { transform: scale(0.9); }
+        
+        .icon-btn {
+            background: rgba(255,255,255,0.2); border: none; border-radius: 50%;
+            width: 55px; height: 55px; color: white; font-size: 22px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        #batch-badge {
+            position: absolute; top: -5px; right: -5px; background: #ff3b30;
+            color: white; font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: bold;
+        }
+
+        .flash-effect {
+            position: fixed; inset: 0; background: white; z-index: 1000;
+            opacity: 0; pointer-events: none;
+        }
+        .flash-effect.active { animation: flashRun 0.2s; }
+        @keyframes flashRun { 0% { opacity: 0; } 50% { opacity: 0.9; } 100% { opacity: 0; } }
+
+        canvas { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="flash" class="flash-effect"></div>
+
+<div id="viewport">
+    <video id="video" autoplay playsinline muted></video>
+
+    <div id="sidebar"></div>
+
+    <div id="zoom-container">
+        <span style="font-weight: bold;">+</span>
+        <input type="range" id="zoom-slider" min="1" max="8" step="0.1" value="1">
+        <span style="font-weight: bold;">-</span>
+    </div>
+
+    <div id="overlay-card">
+        <div id="mini-map"></div>
+        <div class="meta">
+            <h3><span id="ui-city">Bengaluru</span>, <span id="ui-state">Karnataka</span> <span class="flag">🇮🇳</span></h3>
+            <p id="ui-addr" style="font-weight: 600;">Detecting Location...</p>
+            <p>
+                <b>LAT:</b> <span id="ui-lat">0.000000</span>° | <b>LONG:</b> <span id="ui-lon">0.000000</span>°<br>
+                <span id="ui-date">Loading date and time...</span>
+            </p>
+        </div>
+    </div>
+
+    <div class="bottom-bar">
+        <button class="icon-btn" onclick="toggleCamera()">🔄</button>
+        
+        <div class="shutter-outer">
+            <button id="shutter-btn"></button>
+        </div>
+
+        <div style="position: relative;">
+            <button class="icon-btn" onclick="downloadZip()">📦</button>
+            <div id="batch-badge">0</div>
+        </div>
+    </div>
+</div>
+
+<canvas id="proc-canvas"></canvas>
+
+<script>
+    let currentStream = null;
+    let facingMode = "environment";
+    let photoBuffer = [];
+    let map, marker;
+    let zoomLevel = 1;
+
+    const video = document.getElementById('video');
+    const badge = document.getElementById('batch-badge');
+    const sidebar = document.getElementById('sidebar');
+
+    // 1. Hardware Initialization
+    async function startCamera() {
+        if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia({
+                video: { 
+                    facingMode: facingMode,
+                    width: { ideal: 3840 }, 
+                    height: { ideal: 2160 }
+                }
+            });
+            video.srcObject = currentStream;
+        } catch (e) { alert("Camera Permission Required"); }
+    }
+
+    function toggleCamera() {
+        facingMode = (facingMode === "environment") ? "user" : "environment";
+        startCamera();
+    }
+
+    // 2. Volume Button Support
+    window.addEventListener('keydown', (e) => {
+        // Volume keys (standard Android codes)
+        if (e.key === "VolumeUp" || e.key === "VolumeDown" || e.keyCode === 174 || e.keyCode === 175) {
+            e.preventDefault();
+            capturePhoto();
+        }
+    });
+
+    // 3. GPS & Map
+    function initGPS() {
+        navigator.geolocation.watchPosition(async (pos) => {
+            const { latitude, longitude } = pos.coords;
+            document.getElementById('ui-lat').innerText = latitude.toFixed(6);
+            document.getElementById('ui-lon').innerText = longitude.toFixed(6);
+            document.getElementById('ui-date').innerText = new Date().toLocaleString('en-GB', { 
+                weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', 
+                hour: '2-digit', minute: '2-digit', hour12: true 
+            }).toUpperCase() + " GMT +05:30";
+
+            if (!map) {
+                map = L.map('mini-map', { zoomControl: false, attributionControl: false }).setView([latitude, longitude], 17);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                marker = L.marker([latitude, longitude]).addTo(map);
+            } else {
+                map.setView([latitude, longitude]);
+                marker.setLatLng([latitude, longitude]);
+            }
+
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                const data = await res.json();
+                document.getElementById('ui-city').innerText = data.address.city || data.address.town || "Bengaluru";
+                document.getElementById('ui-state').innerText = data.address.state || "Karnataka";
+                document.getElementById('ui-addr').innerText = data.display_name.split(',').slice(0, 4).join(',');
+            } catch (e) {}
+        }, null, { enableHighAccuracy: true });
+    }
+
+    // 4. Zoom Slider
+    document.getElementById('zoom-slider').oninput = (e) => {
+        zoomLevel = e.target.value;
+        video.style.transform = `scale(${zoomLevel})`;
+    };
+
+    // 5. Shutter Logic
+    async function capturePhoto() {
+        // Visual Flash
+        const flash = document.getElementById('flash');
+        flash.classList.add('active');
+        setTimeout(() => flash.classList.remove('active'), 200);
+
+        const canvas = document.getElementById('proc-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Draw video frame with current zoom
+        const sw = video.videoWidth / zoomLevel;
+        const sh = video.videoHeight / zoomLevel;
+        const sx = (video.videoWidth - sw) / 2;
+        const sy = (video.videoHeight - sh) / 2;
+        
+        ctx.filter = "contrast(1.05) saturate(1.1)";
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+        const rawBlob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
+        
+        // Instant Feedback
+        createThumbnail(rawBlob);
+        
+        // Background render of the Tile Watermark
+        renderFinalImage(rawBlob);
+    }
+
+    document.getElementById('shutter-btn').onclick = capturePhoto;
+
+    function createThumbnail(blob) {
+        const url = URL.createObjectURL(blob);
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = 'thumb';
+        sidebar.prepend(img);
+    }
+
+    async function renderFinalImage(blob) {
+        const card = document.getElementById('overlay-card');
+        const cardImg = await html2canvas(card, { useCORS: true, scale: 3, backgroundColor: null });
+
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = video.videoWidth;
+        finalCanvas.height = video.videoHeight;
+        const fctx = finalCanvas.getContext('2d');
+
+        const tempImg = new Image();
+        tempImg.src = URL.createObjectURL(blob);
+        await new Promise(r => tempImg.onload = r);
+
+        fctx.drawImage(tempImg, 0, 0);
+
+        // Calculate card size proportional to photo
+        const cardW = finalCanvas.width * 0.5; 
+        const cardH = (cardImg.height / cardImg.width) * cardW;
+        fctx.drawImage(cardImg, (finalCanvas.width - cardW) / 2, finalCanvas.height - cardH - 120, cardW, cardH);
+
+        const finalBlob = await new Promise(res => finalCanvas.toBlob(res, 'image/jpeg', 0.92));
+        photoBuffer.push(finalBlob);
+        badge.innerText = photoBuffer.length;
+    }
+
+    async function downloadZip() {
+        if (photoBuffer.length === 0) return alert("Take photos first!");
+        const zip = new JSZip();
+        photoBuffer.forEach((b, i) => zip.file(`GPS_IMG_${i+1}.jpg`, b));
+        const content = await zip.generateAsync({type:"blob"});
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = `GPS_CAM_BATCH_${Date.now()}.zip`;
+        link.click();
+        
+        photoBuffer = [];
+        badge.innerText = "0";
+        sidebar.innerHTML = "";
+    }
+
+    startCamera();
+    initGPS();
+</script>
+
+</body>
+</html>
