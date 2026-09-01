@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Robotic Surgery Master Console</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body { margin:0; background:#080b10; color:#fff; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; }
+    #header { width:95%; display:flex; justify-content:space-between; align-items:center; padding:10px; }
+    #viewport { position:relative; width:800px; height:500px; border:2px solid #00f0ff; border-radius:8px; overflow:hidden; }
+    canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
+    .peer-code { background:#00f0ff; color:#000; padding:4px 12px; border-radius:4px; font-weight:bold; font-family:monospace; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h2>MASTER SURGICAL CONSOLE</h2>
+  <div>Mobile Pair Code: <span id="peerIdDisplay" class="peer-code">CONNECTING...</span></div>
+</div>
+
+<div id="viewport">
+  <!-- Interactive Surgery Background (Replace with your surgical video/image) -->
+  <canvas id="tissueMapCanvas"></canvas>
+  <canvas id="hudCanvas"></canvas>
+</div>
+
+<div id="readout" style="margin-top:10px; font-family:monospace; color:#00f0ff;">
+  TARGET TISSUE: AUTO-DETECTING... | VIBRATION FORCE: 0%
+</div>
+
+<script>
+const hudCanvas = document.getElementById('hudCanvas');
+const tissueCanvas = document.getElementById('tissueMapCanvas');
+const hudCtx = hudCanvas.getContext('2d');
+const tissueCtx = tissueCanvas.getContext('2d');
+const viewport = document.getElementById('viewport');
+
+hudCanvas.width = tissueCanvas.width = 800;
+hudCanvas.height = tissueCanvas.height = 500;
+
+let peer, conn, audioCtx, mainGain, panner, filter, noiseNode;
+let toolX = 400, toolY = 250, currentTissue = 'skin';
+
+// 1. Generate Anatomical Color-Mask Background (Simulating Surgical Image)
+function drawAnatomicalImage() {
+  // Background = Skin/Fat Base (Yellowish)
+  tissueCtx.fillStyle = '#d4a359';
+  tissueCtx.fillRect(0, 0, 800, 500);
+
+  // Muscle Region (Red Blob)
+  tissueCtx.fillStyle = '#b32424';
+  tissueCtx.beginPath();
+  tissueCtx.arc(350, 250, 140, 0, Math.PI * 2);
+  tissueCtx.fill();
+
+  // Bone Region (White Line)
+  tissueCtx.fillStyle = '#f0f0f0';
+  tissueCtx.fillRect(330, 150, 40, 200);
+
+  // Fluid/Vessel (Blue Tube)
+  tissueCtx.fillStyle = '#1a538c';
+  tissueCtx.fillRect(150, 350, 500, 30);
+}
+drawAnatomicalImage();
+
+// 2. Auto-Detect Tissue Under Scalpel
+function autoDetectTissue(x, y) {
+  const pixel = tissueCtx.getImageData(x, y, 1, 1).data;
+  const r = pixel[0], g = pixel[1], b = pixel[2];
+
+  if (r > 200 && g > 200 && b > 200) return 'bone';
+  if (r > 160 && g < 80) return 'muscle';
+  if (r < 50 && b > 100) return 'fluid';
+  if (r > 180 && g > 140) return 'fat';
+  return 'skin';
+}
+
+// 3. WebRTC Receiver for Mobile Controller
+peer = new Peer();
+peer.on('open', id => {
+  const shortId = id.slice(0, 4).toUpperCase();
+  document.getElementById('peerIdDisplay').innerText = shortId;
+  
+  // Custom signaling for 4-letter ID mapping
+  peer.on('connection', c => {
+    conn = c;
+    conn.on('data', handleMobileInput);
+  });
+});
+
+function handleMobileInput(data) {
+  if (data.type === 'move') {
+    toolX = Math.max(0, Math.min(800, toolX + data.dx));
+    toolY = Math.max(0, Math.min(500, toolY + data.dy));
+
+    // Auto-detect target tissue under tool position
+    const detected = autoDetectTissue(toolX, toolY);
+    if (detected !== currentTissue) {
+      currentTissue = detected;
+      updateAudioProfile(currentTissue);
+    }
+
+    // Send Haptic Feedback Signal Back to Smartphone
+    if (conn && conn.open) {
+      conn.send({ type: 'vibrate', tissue: currentTissue, velocity: data.speed });
+    }
+
+    document.getElementById('readout').innerText = 
+      `TARGET TISSUE: ${currentTissue.toUpperCase()} | POS: (${Math.round(toolX)}, ${Math.round(toolY)})`;
+  }
+}
+
+// 4. Spatial Audio Engine
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  panner = new PannerNode(audioCtx, { panningModel: 'HRTF' });
+  mainGain = audioCtx.createGain();
+  filter = audioCtx.createBiquadFilter();
+
+  const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+  noiseNode = audioCtx.createBufferSource();
+  noiseNode.buffer = buffer;
+  noiseNode.loop = true;
+  noiseNode.connect(filter);
+  filter.connect(mainGain);
+  mainGain.connect(panner);
+  panner.connect(audioCtx.destination);
+  noiseNode.start();
+}
+
+function updateAudioProfile(tissue) {
+  if (!audioCtx) return;
+  const profiles = {
+    skin:   { f: 2000, type: 'bandpass' },
+    fat:    { f: 350,  type: 'lowpass' },
+    muscle: { f: 700,  type: 'highpass' },
+    bone:   { f: 4500, type: 'highpass' },
+    fluid:  { f: 500,  type: 'bandpass' }
+  };
+  filter.type = profiles[tissue].type;
+  filter.frequency.setTargetAtTime(profiles[tissue].f, audioCtx.currentTime, 0.05);
+}
+
+// Rendering Overlay
+function render() {
+  hudCtx.clearRect(0, 0, 800, 500);
+  hudCtx.drawImage(tissueCanvas, 0, 0);
+
+  // Scalpel Crosshair
+  hudCtx.strokeStyle = currentTissue === 'bone' ? '#ff0055' : '#00f0ff';
+  hudCtx.lineWidth = 2;
+  hudCtx.beginPath();
+  hudCtx.arc(toolX, toolY, 12, 0, Math.PI * 2);
+  hudCtx.moveTo(toolX - 20, toolY); hudCtx.lineTo(toolX + 20, toolY);
+  hudCtx.moveTo(toolX, toolY - 20); hudCtx.lineTo(toolX, toolY + 20);
+  hudCtx.stroke();
+
+  requestAnimationFrame(render);
+}
+document.addEventListener('click', () => { if (!audioCtx) initAudio(); });
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Surgical Haptic Controller</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body { margin:0; background:#111; color:#fff; font-family:sans-serif; text-align:center; touch-action:none; }
+    #touchpad { width:90vw; height:60vh; margin:20px auto; background:#222; border:2px solid #00f0ff; border-radius:12px; display:flex; align-items:center; justify-content:center; }
+    input { padding:12px; font-size:1.2rem; width:120px; text-align:center; }
+    button { padding:12px 24px; font-size:1.2rem; background:#00f0ff; border:none; border-radius:6px; font-weight:bold; }
+  </style>
+</head>
+<body>
+
+<h3>MOBILE SURGICAL CONTROLLER</h3>
+
+<div id="pairScreen">
+  <input type="text" id="codeInput" placeholder="CODE" maxlength="4">
+  <button id="connectBtn">CONNECT</button>
+</div>
+
+<div id="controllerScreen" style="display:none;">
+  <div id="touchpad">DRAG THUMB HERE TO OPERATE</div>
+</div>
+
+<script>
+let peer = new Peer();
+let conn = null;
+let lastTouchX = 0, lastTouchY = 0;
+
+document.getElementById('connectBtn').addEventListener('click', () => {
+  const code = document.getElementById('codeInput').value.toUpperCase();
+  // Search and connect via WebRTC
+  conn = peer.connect(code);
+
+  conn.on('open', () => {
+    document.getElementById('pairScreen').style.display = 'none';
+    document.getElementById('controllerScreen').style.display = 'block';
+  });
+
+  // Receive Auto-Haptic Trigger from Laptop
+  conn.on('data', (data) => {
+    if (data.type === 'vibrate' && navigator.vibrate) {
+      triggerHaptics(data.tissue, data.velocity);
+    }
+  });
+});
+
+// Hardware Haptic Pattern Mapping
+function triggerHaptics(tissue, velocity) {
+  const intensity = Math.min(velocity * 50, 100);
+  switch(tissue) {
+    case 'skin':   navigator.vibrate([15]); break;
+    case 'fat':    navigator.vibrate([30, 20, 30]); break;
+    case 'muscle': navigator.vibrate([10, 10, 10, 10, 10]); break;
+    case 'bone':   navigator.vibrate([80]); break;
+    case 'fluid':  navigator.vibrate([5, 30, 5]); break;
+  }
+}
+
+// Touch Controller Motion Streamer
+const touchpad = document.getElementById('touchpad');
+
+touchpad.addEventListener('touchstart', e => {
+  lastTouchX = e.touches[0].clientX;
+  lastTouchY = e.touches[0].clientY;
+});
+
+touchpad.addEventListener('touchmove', e => {
+  if (!conn) return;
+
+  const touch = e.touches[0];
+  const dx = (touch.clientX - lastTouchX) * 1.5;
+  const dy = (touch.clientY - lastTouchY) * 1.5;
+  const speed = Math.hypot(dx, dy);
+
+  lastTouchX = touch.clientX;
+  lastTouchY = touch.clientY;
+
+  conn.send({ type: 'move', dx: dx, dy: dy, speed: speed });
+});
+</script>
+</body>
+</html>
