@@ -2,124 +2,196 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Surgical Controller</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Surgical Handpiece Controller</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-        body { background: #05080e; color: #00f3ff; font-family: -apple-system, system-ui, sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; touch-action: manipulation; }
+        body { background: #05080e; color: #00f3ff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; overflow: hidden; }
         
-        .header { text-align: center; border-bottom: 1px solid #00f3ff33; padding-bottom: 10px; }
-        .header h1 { font-size: 16px; letter-spacing: 2px; }
+        .header { text-align: center; border-bottom: 1px solid rgba(0, 243, 255, 0.2); padding-bottom: 8px; }
+        .header h1 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; }
         
-        .connect-box { display: flex; flex-direction: column; gap: 10px; background: #0b121e; padding: 15px; border-radius: 8px; border: 1px solid #00f3ff55; }
-        input { background: #000; border: 1px solid #00f3ff; color: #fff; padding: 12px; font-size: 16px; border-radius: 4px; text-align: center; }
-        button { background: #00f3ff; color: #000; border: none; padding: 14px; font-weight: bold; border-radius: 4px; font-size: 16px; text-transform: uppercase; cursor: pointer; }
+        .card { background: #0b121e; padding: 12px; border-radius: 8px; border: 1px solid rgba(0, 243, 255, 0.3); }
+        .connect-box { display: flex; flex-direction: column; gap: 8px; }
+        input { background: #000; border: 1px solid #00f3ff; color: #fff; padding: 10px; font-size: 15px; border-radius: 4px; text-align: center; font-family: monospace; }
         
-        .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center; background: #0b121e; padding: 15px; border-radius: 8px; }
-        .grid-item span { display: block; font-size: 10px; color: #888; }
-        .grid-item div { font-size: 18px; font-weight: bold; color: #fff; margin-top: 4px; }
+        button { background: #00f3ff; color: #000; border: none; padding: 12px; font-weight: bold; border-radius: 4px; font-size: 13px; text-transform: uppercase; cursor: pointer; letter-spacing: 1px; }
+        button:active { background: #fff; }
         
-        #haptic-indicator { height: 120px; border: 2px dashed #00f3ff55; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; transition: background 0.1s; }
-        #haptic-indicator.active-tissue { background: rgba(255, 170, 0, 0.3); border-color: #ffaa00; color: #ffaa00; }
-        #haptic-indicator.active-bone { background: rgba(255, 51, 102, 0.4); border-color: #ff3366; color: #ff3366; }
+        .btn-secondary { background: #1a2638; color: #00f3ff; border: 1px solid #00f3ff; margin-top: 6px; }
+        
+        .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center; }
+        .grid-item span { display: block; font-size: 9px; color: #888; }
+        .grid-item div { font-size: 16px; font-weight: bold; color: #fff; margin-top: 2px; font-family: monospace; }
+        
+        #haptic-indicator { height: 75px; border: 2px dashed rgba(0, 243, 255, 0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; transition: all 0.1s ease; font-weight: bold; }
+        #haptic-indicator.active-tissue { background: rgba(255, 170, 0, 0.25); border-color: #ffaa00; color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.4); }
+        #haptic-indicator.active-bone { background: rgba(255, 51, 102, 0.3); border-color: #ff3366; color: #ff3366; box-shadow: 0 0 15px rgba(255, 51, 102, 0.4); }
+
+        /* Manual Touch Pad Fallback */
+        .touch-pad { height: 110px; background: #000; border: 1px solid rgba(0, 243, 255, 0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
     </style>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div class="header">
-        <h1>ANTARCTIC REMOTE HANDPIECE</h1>
+        <h1>Antarctic Tele-Handpiece</h1>
     </div>
 
-    <div class="connect-box" id="conn-panel">
+    <!-- Pairing Panel -->
+    <div class="card connect-box" id="conn-panel">
         <input type="text" id="target-peer-id" placeholder="Enter Laptop Peer ID">
         <button id="connect-btn">Connect Controller</button>
     </div>
 
+    <!-- Visual Haptic Feedback Element -->
     <div id="haptic-indicator">Haptic Surface Neutral</div>
 
-    <div class="telemetry-grid">
-        <div class="grid-item"><span>ALPHA</span><div id="val-a">0°</div></div>
-        <div class="grid-item"><span>BETA</span><div id="val-b">0°</div></div>
-        <div class="grid-item"><span>GAMMA</span><div id="val-g">0°</div></div>
+    <!-- Gyro Sensor Controls -->
+    <div class="card">
+        <div class="telemetry-grid">
+            <div class="grid-item"><span>ALPHA</span><div id="val-a">0°</div></div>
+            <div class="grid-item"><span>BETA</span><div id="val-b">0°</div></div>
+            <div class="grid-item"><span>GAMMA</span><div id="val-g">0°</div></div>
+        </div>
+        <button id="calibrate-btn" class="btn-secondary" style="width: 100%;">Recalibrate Zero Point</button>
+    </div>
+
+    <!-- Backup Touch Controls -->
+    <div class="touch-pad" id="touch-pad">
+        Drag Finger Here for Manual Control
     </div>
 
     <script>
-        const peer = new Peer();
+        // WebRTC Config with Public STUN Servers for Cellular & Hotspot Compatibility
+        const peer = new Peer({
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        });
+
         let conn = null;
         let isConnected = false;
+        
+        let offsetAlpha = 0, offsetBeta = 0, offsetGamma = 0;
+        let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
+        let isSending = false;
 
-        // Haptic Vibration Patterns
-        const HAPTIC_PATTERNS = {
-            SOFT_TISSUE: [12, 30, 12, 30, 12],
-            HARD_BONE: [35, 10, 35, 10, 35]
-        };
+        // Auto-connect if ?peer= parameter exists in URL
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const peerId = params.get('peer');
+            if (peerId) {
+                document.getElementById('target-peer-id').value = peerId;
+                initConnection(peerId);
+            }
+        });
 
         document.getElementById('connect-btn').addEventListener('click', () => {
             const peerId = document.getElementById('target-peer-id').value.trim();
             if (!peerId) return alert("Please enter Peer ID");
 
-            // Request Device Orientation Permissions (iOS Requirement)
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(response => {
-                        if (response === 'granted') initConnection(peerId);
-                        else alert('Permission denied');
-                    });
+                DeviceOrientationEvent.requestPermission().then(res => {
+                    if (res === 'granted') initConnection(peerId);
+                    else alert('Motion permission denied');
+                });
             } else {
                 initConnection(peerId);
             }
         });
 
         function initConnection(peerId) {
-            conn = peer.connect(peerId);
+            conn = peer.connect(peerId, { reliable: true });
 
             conn.on('open', () => {
                 isConnected = true;
                 document.getElementById('conn-panel').style.display = 'none';
-                
-                // Start Gyro Orientation Listener
                 window.addEventListener('deviceorientation', handleOrientation);
             });
 
             conn.on('data', (data) => {
                 const msg = JSON.parse(data);
-
                 if (msg.type === "PING") {
-                    // Echo timestamp back immediately for RTT measurement
                     conn.send(JSON.stringify({ type: "PONG", timestamp: msg.timestamp }));
                 } else if (msg.type === "HAPTIC") {
                     triggerHaptics(msg.pattern);
                 }
             });
+
+            conn.on('close', () => {
+                alert("Connection closed");
+                location.reload();
+            });
         }
+
+        // Recalibrate Zero-point
+        document.getElementById('calibrate-btn').addEventListener('click', () => {
+            offsetAlpha = rawAlpha;
+            offsetBeta = rawBeta;
+            offsetGamma = rawGamma;
+            if (navigator.vibrate) navigator.vibrate(50);
+        });
 
         function handleOrientation(event) {
-            if (!isConnected) return;
+            rawAlpha = event.alpha || 0;
+            rawBeta = event.beta || 0;
+            rawGamma = event.gamma || 0;
 
-            const alpha = Math.round(event.alpha || 0);
-            const beta = Math.round(event.beta || 0);
-            const gamma = Math.round(event.gamma || 0);
+            if (!isConnected || isSending) return;
 
-            document.getElementById('val-a').innerText = alpha + "°";
-            document.getElementById('val-b').innerText = beta + "°";
-            document.getElementById('val-g').innerText = gamma + "°";
+            // Throttle sensor updates to ~60 FPS
+            isSending = true;
+            requestAnimationFrame(() => {
+                const calAlpha = Math.round(rawAlpha - offsetAlpha);
+                const calBeta = Math.round(rawBeta - offsetBeta);
+                const calGamma = Math.round(rawGamma - offsetGamma);
 
-            // Transmit stream to laptop HUD
-            conn.send(JSON.stringify({
-                type: "MOTION",
-                coords: { alpha, beta, gamma }
-            }));
+                document.getElementById('val-a').innerText = calAlpha + "°";
+                document.getElementById('val-b').innerText = calBeta + "°";
+                document.getElementById('val-g').innerText = calGamma + "°";
+
+                if (conn && conn.open) {
+                    conn.send(JSON.stringify({
+                        type: "MOTION",
+                        coords: { alpha: calAlpha, beta: calBeta, gamma: calGamma }
+                    }));
+                }
+                isSending = false;
+            });
         }
 
+        // Backup Touch Pad Controller
+        const touchPad = document.getElementById('touch-pad');
+        touchPad.addEventListener('touchmove', (e) => {
+            if (!isConnected || !e.touches[0]) return;
+            const touch = e.touches[0];
+            const rect = touchPad.getBoundingClientRect();
+            
+            const normX = Math.round(((touch.clientX - rect.left) / rect.width - 0.5) * 60);
+            const normY = Math.round(((touch.clientY - rect.top) / rect.height - 0.5) * 60);
+
+            if (conn && conn.open) {
+                conn.send(JSON.stringify({
+                    type: "MOTION",
+                    coords: { alpha: 0, beta: normY, gamma: normX }
+                }));
+            }
+        });
+
+        // Vibration Dispatcher
         function triggerHaptics(type) {
             const indicator = document.getElementById('haptic-indicator');
             
             if (type === "SOFT_TISSUE" && navigator.vibrate) {
-                navigator.vibrate(HAPTIC_PATTERNS.SOFT_TISSUE);
+                navigator.vibrate([12, 30, 12, 30, 12]);
                 indicator.className = "active-tissue";
-                indicator.innerText = "Soft Tissue Contact";
+                indicator.innerText = "Soft Tissue Drag";
             } else if (type === "HARD_BONE" && navigator.vibrate) {
-                navigator.vibrate(HAPTIC_PATTERNS.HARD_BONE);
+                navigator.vibrate([35, 10, 35, 10, 35]);
                 indicator.className = "active-bone";
                 indicator.innerText = "Hard Bone Contact";
             }
@@ -127,7 +199,7 @@
             setTimeout(() => {
                 indicator.className = "";
                 indicator.innerText = "Haptic Surface Neutral";
-            }, 150);
+            }, 120);
         }
     </script>
 </body>
