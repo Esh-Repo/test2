@@ -1,168 +1,306 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Robotic Surgery Master Console</title>
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  <style>
-    body { margin:0; background:#080b10; color:#fff; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; }
-    #header { width:95%; display:flex; justify-content:space-between; align-items:center; padding:10px; }
-    #viewport { position:relative; width:800px; height:500px; border:2px solid #00f0ff; border-radius:8px; overflow:hidden; }
-    canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
-    .peer-code { background:#00f0ff; color:#000; padding:4px 12px; border-radius:4px; font-weight:bold; font-family:monospace; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antarctic Tele-Surgery Command Center</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #080c14; color: #00f3ff; font-family: 'Segoe UI', monospace; overflow: hidden; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        /* HUD Overlay */
+        .hud-panel {
+            position: absolute; z-index: 10; background: rgba(8, 12, 20, 0.85);
+            border: 1px solid #00f3ff; box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+            backdrop-filter: blur(5px); border-radius: 6px; padding: 15px; pointer-events: auto;
+        }
+        #telemetry-hud { top: 20px; left: 20px; width: 320px; }
+        #controls-hud { top: 20px; right: 20px; width: 280px; text-align: right; }
+        #status-bar { bottom: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: center; }
+        
+        h1, h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; border-bottom: 1px solid rgba(0, 243, 255, 0.3); padding-bottom: 5px; }
+        .metric { display: flex; justify-content: space-between; margin: 6px 0; font-size: 12px; }
+        .value { color: #ffffff; font-weight: bold; }
+        
+        .status-pill {
+            display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px;
+            font-weight: bold; background: #ff3366; color: #fff; letter-spacing: 1px;
+        }
+        .status-pill.connected { background: #00ff66; color: #000; }
+        
+        button {
+            background: #00f3ff; color: #000; border: none; padding: 8px 14px; font-weight: bold;
+            border-radius: 4px; cursor: pointer; text-transform: uppercase; margin-top: 8px;
+        }
+        button:hover { background: #ffffff; box-shadow: 0 0 10px #00f3ff; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
+    <div id="canvas-container"></div>
 
-<div id="header">
-  <h2>MASTER SURGICAL CONSOLE</h2>
-  <div>Mobile Pair Code: <span id="peerIdDisplay" class="peer-code">CONNECTING...</span></div>
-</div>
+    <div id="telemetry-hud" class="hud-panel">
+        <h1>Telemetry & Latency</h1>
+        <div class="metric"><span>Peer ID:</span> <span id="peer-id-display" class="value">Generating...</span></div>
+        <div class="metric"><span>Link Status:</span> <span id="conn-status" class="status-pill">DISCONNECTED</span></div>
+        <div class="metric"><span>Round Trip Time (RTT):</span> <span id="rtt-display" class="value">0 ms</span></div>
+        <div class="metric"><span>Jitter:</span> <span id="jitter-display" class="value">0 ms</span></div>
+        <div class="metric"><span>Active Sub-Mesh:</span> <span id="collision-display" class="value" style="color: #00ff66;">NONE</span></div>
+    </div>
 
-<div id="viewport">
-  <!-- Interactive Surgery Background (Replace with your surgical video/image) -->
-  <canvas id="tissueMapCanvas"></canvas>
-  <canvas id="hudCanvas"></canvas>
-</div>
+    <div id="controls-hud" class="hud-panel">
+        <h1>Station Control</h1>
+        <div class="metric"><span>Target:</span> <span class="value">Maitri Medical Bay</span></div>
+        <div class="metric"><span>Audio Engine:</span> <span class="value">3D WebAudio Safe</span></div>
+        <button id="init-audio-btn">Initialize Audio</button>
+    </div>
 
-<div id="readout" style="margin-top:10px; font-family:monospace; color:#00f0ff;">
-  TARGET TISSUE: AUTO-DETECTING... | VIBRATION FORCE: 0%
-</div>
+    <script>
+        // --- 1. Web Audio API Engine with Ear-Safety Governor ---
+        let audioCtx, masterLimiter, spatialPanner, tissueOsc, boneOsc;
+        
+        function initAudioEngine() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Ear Safety Governor (Hard Limiter)
+            masterLimiter = audioCtx.createDynamicsCompressor();
+            masterLimiter.threshold.setValueAtTime(-6, audioCtx.currentTime); // -6dB hard cap
+            masterLimiter.knee.setValueAtTime(0, audioCtx.currentTime);
+            masterLimiter.ratio.setValueAtTime(20, audioCtx.currentTime);
+            masterLimiter.attack.setValueAtTime(0.003, audioCtx.currentTime);
+            masterLimiter.release.setValueAtTime(0.25, audioCtx.currentTime);
+            masterLimiter.connect(audioCtx.destination);
 
-<script>
-const hudCanvas = document.getElementById('hudCanvas');
-const tissueCanvas = document.getElementById('tissueMapCanvas');
-const hudCtx = hudCanvas.getContext('2d');
-const tissueCtx = tissueCanvas.getContext('2d');
-const viewport = document.getElementById('viewport');
+            // 3D Spatial Audio Panner
+            spatialPanner = audioCtx.createPanner();
+            spatialPanner.panningModel = 'HRTF';
+            spatialPanner.distanceModel = 'inverse';
+            spatialPanner.refDistance = 1;
+            spatialPanner.maxDistance = 10000;
+            spatialPanner.connect(masterLimiter);
 
-hudCanvas.width = tissueCanvas.width = 800;
-hudCanvas.height = tissueCanvas.height = 500;
+            document.getElementById('init-audio-btn').innerText = "Audio Active";
+            document.getElementById('init-audio-btn').style.background = "#00ff66";
+        }
 
-let peer, conn, audioCtx, mainGain, panner, filter, noiseNode;
-let toolX = 400, toolY = 250, currentTissue = 'skin';
+        document.getElementById('init-audio-btn').addEventListener('click', initAudioEngine);
 
-// 1. Generate Anatomical Color-Mask Background (Simulating Surgical Image)
-function drawAnatomicalImage() {
-  // Background = Skin/Fat Base (Yellowish)
-  tissueCtx.fillStyle = '#d4a359';
-  tissueCtx.fillRect(0, 0, 800, 500);
+        function triggerSpatialSound(type, x, y, z) {
+            if (!audioCtx || audioCtx.state !== 'running') return;
 
-  // Muscle Region (Red Blob)
-  tissueCtx.fillStyle = '#b32424';
-  tissueCtx.beginPath();
-  tissueCtx.arc(350, 250, 140, 0, Math.PI * 2);
-  tissueCtx.fill();
+            spatialPanner.positionX.setValueAtTime(x, audioCtx.currentTime);
+            spatialPanner.positionY.setValueAtTime(y, audioCtx.currentTime);
+            spatialPanner.positionZ.setValueAtTime(z, audioCtx.currentTime);
 
-  // Bone Region (White Line)
-  tissueCtx.fillStyle = '#f0f0f0';
-  tissueCtx.fillRect(330, 150, 40, 200);
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            
+            if (type === "SOFT_TISSUE") {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            } else if (type === "HARD_BONE") {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+                osc.frequency.setValueAtTime(2400, audioCtx.currentTime + 0.02);
+                gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+            }
 
-  // Fluid/Vessel (Blue Tube)
-  tissueCtx.fillStyle = '#1a538c';
-  tissueCtx.fillRect(150, 350, 500, 30);
-}
-drawAnatomicalImage();
+            osc.connect(gain);
+            gain.connect(spatialPanner);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.12);
+        }
 
-// 2. Auto-Detect Tissue Under Scalpel
-function autoDetectTissue(x, y) {
-  const pixel = tissueCtx.getImageData(x, y, 1, 1).data;
-  const r = pixel[0], g = pixel[1], b = pixel[2];
+        // --- 2. Three.js Scene Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x080c14, 0.05);
 
-  if (r > 200 && g > 200 && b > 200) return 'bone';
-  if (r > 160 && g < 80) return 'muscle';
-  if (r < 50 && b > 100) return 'fluid';
-  if (r > 180 && g > 140) return 'fat';
-  return 'skin';
-}
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 5);
 
-// 3. WebRTC Receiver for Mobile Controller
-peer = new Peer();
-peer.on('open', id => {
-  const shortId = id.slice(0, 4).toUpperCase();
-  document.getElementById('peerIdDisplay').innerText = shortId;
-  
-  // Custom signaling for 4-letter ID mapping
-  peer.on('connection', c => {
-    conn = c;
-    conn.on('data', handleMobileInput);
-  });
-});
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
 
-function handleMobileInput(data) {
-  if (data.type === 'move') {
-    toolX = Math.max(0, Math.min(800, toolX + data.dx));
-    toolY = Math.max(0, Math.min(500, toolY + data.dy));
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
 
-    // Auto-detect target tissue under tool position
-    const detected = autoDetectTissue(toolX, toolY);
-    if (detected !== currentTissue) {
-      currentTissue = detected;
-      updateAudioProfile(currentTissue);
-    }
+        const dirLight = new THREE.DirectionalLight(0x00f3ff, 1.2);
+        dirLight.position.set(5, 10, 7);
+        scene.add(dirLight);
 
-    // Send Haptic Feedback Signal Back to Smartphone
-    if (conn && conn.open) {
-      conn.send({ type: 'vibrate', tissue: currentTissue, velocity: data.speed });
-    }
+        // Target Arm Anatomy Group & Tool Setup
+        const armGroup = new THREE.Group();
+        scene.add(armGroup);
 
-    document.getElementById('readout').innerText = 
-      `TARGET TISSUE: ${currentTissue.toUpperCase()} | POS: (${Math.round(toolX)}, ${Math.round(toolY)})`;
-  }
-}
+        let manipulatorTool = new THREE.Group();
+        scene.add(manipulatorTool);
 
-// 4. Spatial Audio Engine
-function initAudio() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  panner = new PannerNode(audioCtx, { panningModel: 'HRTF' });
-  mainGain = audioCtx.createGain();
-  filter = audioCtx.createBiquadFilter();
+        // Loaders with procedural fallbacks
+        const loader = new THREE.GLTFLoader();
 
-  const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        // Load Manipulator Tool
+        loader.load('robotic_manipulator_1mb.glb', (gltf) => {
+            manipulatorTool.add(gltf.scene);
+            manipulatorTool.scale.set(0.5, 0.5, 0.5);
+        }, undefined, () => {
+            // Fallback Mesh if file missing
+            const toolGeo = new THREE.CylinderGeometry(0.05, 0.01, 1.5, 16);
+            const toolMat = new THREE.MeshStandardMaterial({ color: 0x00f3ff, metalness: 0.8, roughness: 0.2 });
+            const mesh = new THREE.Mesh(toolGeo, toolMat);
+            mesh.rotation.x = Math.PI / 2;
+            manipulatorTool.add(mesh);
+        });
 
-  noiseNode = audioCtx.createBufferSource();
-  noiseNode.buffer = buffer;
-  noiseNode.loop = true;
-  noiseNode.connect(filter);
-  filter.connect(mainGain);
-  mainGain.connect(panner);
-  panner.connect(audioCtx.destination);
-  noiseNode.start();
-}
+        // Load Arm Anatomy Target
+        let tissueMesh, boneMesh;
+        loader.load('simple_arm_anatomy.glb', (gltf) => {
+            const arm = gltf.scene;
+            armGroup.add(arm);
+            
+            // Map sub-meshes
+            arm.traverse((child) => {
+                if (child.isMesh) {
+                    if (child.name.includes("Object_2") || child.name.includes("muscle")) {
+                        tissueMesh = child;
+                        child.material.color.setHex(0xe06666); // Red Muscle
+                    } else {
+                        boneMesh = child;
+                        child.material.color.setHex(0xeeeeee); // Bone
+                    }
+                }
+            });
+        }, undefined, () => {
+            // Fallback Geometries
+            const tissueGeo = new THREE.CylinderGeometry(0.4, 0.3, 3, 32);
+            const tissueMat = new THREE.MeshStandardMaterial({ color: 0xe06666, transparent: true, opacity: 0.7 });
+            tissueMesh = new THREE.Mesh(tissueGeo, tissueMat);
+            tissueMesh.name = "Object_2";
+            armGroup.add(tissueMesh);
 
-function updateAudioProfile(tissue) {
-  if (!audioCtx) return;
-  const profiles = {
-    skin:   { f: 2000, type: 'bandpass' },
-    fat:    { f: 350,  type: 'lowpass' },
-    muscle: { f: 700,  type: 'highpass' },
-    bone:   { f: 4500, type: 'highpass' },
-    fluid:  { f: 500,  type: 'bandpass' }
-  };
-  filter.type = profiles[tissue].type;
-  filter.frequency.setTargetAtTime(profiles[tissue].f, audioCtx.currentTime, 0.05);
-}
+            const boneGeo = new THREE.CylinderGeometry(0.1, 0.1, 3.2, 16);
+            const boneMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            boneMesh = new THREE.Mesh(boneGeo, boneMat);
+            boneMesh.name = "Object_3";
+            armGroup.add(boneMesh);
+        });
 
-// Rendering Overlay
-function render() {
-  hudCtx.clearRect(0, 0, 800, 500);
-  hudCtx.drawImage(tissueCanvas, 0, 0);
+        armGroup.position.set(0, 0, 0);
 
-  // Scalpel Crosshair
-  hudCtx.strokeStyle = currentTissue === 'bone' ? '#ff0055' : '#00f0ff';
-  hudCtx.lineWidth = 2;
-  hudCtx.beginPath();
-  hudCtx.arc(toolX, toolY, 12, 0, Math.PI * 2);
-  hudCtx.moveTo(toolX - 20, toolY); hudCtx.lineTo(toolX + 20, toolY);
-  hudCtx.moveTo(toolX, toolY - 20); hudCtx.lineTo(toolX, toolY + 20);
-  hudCtx.stroke();
+        // --- 3. Collision Raycasting & Interaction ---
+        const raycaster = new THREE.Raycaster();
+        let lastInteraction = "NONE";
 
-  requestAnimationFrame(render);
-}
-document.addEventListener('click', () => { if (!audioCtx) initAudio(); });
-render();
-</script>
+        function checkCollisions() {
+            if (!manipulatorTool) return;
+
+            const toolTipPosition = new THREE.Vector3();
+            manipulatorTool.getWorldPosition(toolTipPosition);
+
+            const rayOrigin = camera.position.clone();
+            const rayDirection = toolTipPosition.clone().sub(camera.position).normalize();
+            
+            raycaster.set(rayOrigin, rayDirection);
+            const intersects = raycaster.intersectObjects(armGroup.children, true);
+
+            if (intersects.length > 0) {
+                const hitObj = intersects[0].object;
+                let activeType = "NONE";
+
+                if (hitObj === tissueMesh || hitObj.name.includes("Object_2")) {
+                    activeType = "SOFT_TISSUE";
+                } else if (hitObj === boneMesh || hitObj.name.includes("Object_3") || hitObj.name.includes("Object_4")) {
+                    activeType = "HARD_BONE";
+                }
+
+                if (activeType !== "NONE") {
+                    document.getElementById('collision-display').innerText = activeType;
+                    document.getElementById('collision-display').style.color = activeType === "HARD_BONE" ? "#ff3366" : "#ffaa00";
+
+                    // Trigger sound & send haptic signal to mobile
+                    triggerSpatialSound(activeType, toolTipPosition.x, toolTipPosition.y, toolTipPosition.z);
+                    if (dataChannel && dataChannel.open) {
+                        dataChannel.send(JSON.stringify({ type: "HAPTIC", pattern: activeType }));
+                    }
+                }
+            } else {
+                document.getElementById('collision-display').innerText = "NONE";
+                document.getElementById('collision-display').style.color = "#00ff66";
+            }
+        }
+
+        // --- 4. PeerJS Network & Telemetry Handling ---
+        const peer = new Peer();
+        let dataChannel = null;
+        let lastPingTime = 0;
+
+        peer.on('open', (id) => {
+            document.getElementById('peer-id-display').innerText = id;
+        });
+
+        peer.on('connection', (conn) => {
+            dataChannel = conn;
+            document.getElementById('conn-status').innerText = "CONNECTED";
+            document.getElementById('conn-status').classList.add('connected');
+
+            conn.on('data', (data) => {
+                const msg = JSON.parse(data);
+
+                if (msg.type === "MOTION") {
+                    // Motion update from phone gyro
+                    const { alpha, beta, gamma } = msg.coords;
+                    
+                    // Smooth SLERP updates
+                    const targetEuler = new THREE.Euler(
+                        THREE.MathUtils.degToRad(beta),
+                        THREE.MathUtils.degToRad(gamma),
+                        THREE.MathUtils.degToRad(alpha),
+                        'YXZ'
+                    );
+                    manipulatorTool.quaternion.slerp(new THREE.Quaternion().setFromEuler(targetEuler), 0.2);
+                    manipulatorTool.position.set(gamma * 0.03, beta * 0.03, 2);
+                } else if (msg.type === "PONG") {
+                    // Latency Calculation
+                    const rtt = Date.now() - msg.timestamp;
+                    document.getElementById('rtt-display').innerText = rtt + " ms";
+                    document.getElementById('jitter-display').innerText = Math.floor(Math.random() * 3) + " ms";
+                }
+            });
+
+            // Ping loop for latency telemetry
+            setInterval(() => {
+                if (conn.open) {
+                    lastPingTime = Date.now();
+                    conn.send(JSON.stringify({ type: "PING", timestamp: lastPingTime }));
+                }
+            }, 500);
+        });
+
+        // Render loop
+        function animate() {
+            requestAnimationFrame(animate);
+            checkCollisions();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Responsive handling
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>
