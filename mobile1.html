@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Surgical Gamepad Controller</title>
+    <title>Surgical Tele-Gamepad</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; touch-action: manipulation; }
         body { background: #f8fafc; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: 12px; overflow: hidden; }
@@ -18,62 +18,59 @@
         button { background: #2563eb; color: #ffffff; border: none; padding: 10px; font-weight: bold; border-radius: 6px; font-size: 12px; text-transform: uppercase; cursor: pointer; letter-spacing: 0.5px; }
         button:active { background: #1d4ed8; }
 
-        /* Touch Gamepad Layout */
+        /* Gamepad Controls */
         .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; height: 180px; align-items: center; }
         
-        /* 2D Virtual Joystick */
         .joystick-container { width: 140px; height: 140px; background: #e2e8f0; border-radius: 50%; border: 2px solid #94a3b8; position: relative; margin: 0 auto; touch-action: none; display: flex; align-items: center; justify-content: center; }
         .joystick-knob { width: 50px; height: 50px; background: #2563eb; border-radius: 50%; position: absolute; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.4); pointer-events: none; }
 
-        /* Z-Axis Depth Slider */
         .depth-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 6px; }
         .depth-container label { font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; }
         .depth-slider { -webkit-appearance: slider-vertical; width: 35px; height: 120px; accent-color: #2563eb; }
 
-        /* Selectors */
         .selector-group { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
         .selector-title { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; }
         .btn-group { display: flex; gap: 4px; }
         .btn-option { flex: 1; padding: 8px 4px; font-size: 10px; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; }
         .btn-option.active { background: #2563eb; color: #ffffff; border-color: #2563eb; }
 
-        /* Dynamic Haptic Feedback Indicator */
-        #haptic-indicator { height: 42px; border: 2px dashed #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; text-transform: uppercase; font-weight: bold; color: #64748b; background: #ffffff; }
-        #haptic-indicator.active-skin { background: #fef3c7; border-color: #d97706; color: #d97706; }
-        #haptic-indicator.active-muscle { background: #fee2e2; border-color: #dc2626; color: #dc2626; }
-        #haptic-indicator.active-bone { background: #f1f5f9; border-color: #475569; color: #0f172a; }
+        /* Tactile Haptic Indicator */
+        #haptic-indicator { height: 45px; border: 2px dashed #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; text-transform: uppercase; font-weight: bold; color: #64748b; background: #ffffff; transition: all 0.1s ease; }
+        #haptic-indicator.active-skin { background: #fef3c7; border-color: #d97706; color: #d97706; transform: scale(0.98); }
+        #haptic-indicator.active-muscle { background: #fee2e2; border-color: #dc2626; color: #dc2626; transform: scale(0.97); }
+        #haptic-indicator.active-bone { background: #e2e8f0; border-color: #0f172a; color: #0f172a; transform: scale(0.95); }
     </style>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div class="header">
-        <h1>Robotic Tele-Gamepad</h1>
+        <h1>Surgical Tele-Gamepad</h1>
     </div>
 
     <!-- Pairing Panel -->
     <div class="card connect-box" id="conn-panel">
         <input type="text" id="target-peer-id" placeholder="Enter Station Peer ID">
-        <button id="connect-btn">Connect Gamepad</button>
+        <button id="connect-btn">Connect & Enable Haptics</button>
     </div>
 
-    <!-- Haptic Indicator -->
-    <div id="haptic-indicator">Surface Neutral</div>
+    <!-- Visual Haptic Feedback -->
+    <div id="haptic-indicator">Haptic Surface Neutral</div>
 
-    <!-- Controls -->
+    <!-- Joystick + Depth Slider Controls -->
     <div class="card controls-grid">
         <div>
-            <div class="selector-title" style="text-align: center; margin-bottom: 4px;">XY Positioning</div>
+            <div class="selector-title" style="text-align: center; margin-bottom: 4px;">XY Movement (Pad)</div>
             <div class="joystick-container" id="joystick-zone">
                 <div class="joystick-knob" id="joystick-knob"></div>
             </div>
         </div>
         <div class="depth-container">
             <label>Z-Depth</label>
-            <input type="range" min="0" max="100" value="0" class="depth-slider" id="depth-input">
+            <input type="range" min="0" max="100" value="50" class="depth-slider" id="depth-input">
         </div>
     </div>
 
-    <!-- Tool & Preset Selectors -->
+    <!-- Tool Selection -->
     <div class="card">
         <div class="selector-group">
             <div class="selector-title">Active Tool</div>
@@ -82,14 +79,6 @@
                 <button class="btn-option" data-tool="SAW">Bone Saw</button>
                 <button class="btn-option" data-tool="LASER">Laser</button>
                 <button class="btn-option" data-tool="CAUTERY">Cautery</button>
-            </div>
-        </div>
-        <div class="selector-group">
-            <div class="selector-title">Target Preset</div>
-            <div class="btn-group" id="material-group">
-                <button class="btn-option active" data-mat="SKIN">Skin Layer</button>
-                <button class="btn-option" data-mat="MUSCLE">Muscle Layer</button>
-                <button class="btn-option" data-mat="BONE">Bone Layer</button>
             </div>
         </div>
     </div>
@@ -102,20 +91,26 @@
         let conn = null;
         let isConnected = false;
         let selectedTool = "SCALPEL";
-        let selectedMaterial = "SKIN";
+        let hapticUnlocked = false;
 
+        // Auto-connect from URL param
         window.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
             const peerId = params.get('peer');
             if (peerId) {
                 document.getElementById('target-peer-id').value = peerId;
-                initConnection(peerId);
             }
         });
 
         document.getElementById('connect-btn').addEventListener('click', () => {
             const peerId = document.getElementById('target-peer-id').value.trim();
             if (!peerId) return alert("Please enter Peer ID");
+
+            // User gesture unlocks mobile vibration API
+            if (navigator.vibrate) {
+                navigator.vibrate([30, 20, 30]);
+                hapticUnlocked = true;
+            }
             initConnection(peerId);
         });
 
@@ -131,7 +126,7 @@
             conn.on('data', (data) => {
                 const msg = JSON.parse(data);
                 if (msg.type === "HAPTIC") {
-                    triggerHaptics(msg.pattern);
+                    triggerDistinctHaptics(msg.pattern);
                 }
             });
 
@@ -141,24 +136,17 @@
             });
         }
 
-        // Selector Button Handlers
+        // Tool Selection Buttons
         document.querySelectorAll('#tool-group .btn-option').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 document.querySelectorAll('#tool-group .btn-option').forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
                 selectedTool = e.target.dataset.tool;
+                if (navigator.vibrate) navigator.vibrate(15);
             });
         });
 
-        document.querySelectorAll('#material-group .btn-option').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('#material-group .btn-option').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                selectedMaterial = e.target.dataset.mat;
-            });
-        });
-
-        // Virtual Touch Joystick Logic
+        // Joystick Controls
         const joystickZone = document.getElementById('joystick-zone');
         const joystickKnob = document.getElementById('joystick-knob');
         let joyX = 0, joyY = 0;
@@ -180,8 +168,8 @@
             }
 
             joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-            joyX = dx / maxRadius;
-            joyY = dy / maxRadius;
+            joyX = dx / maxRadius; // Normalized -1 to 1
+            joyY = dy / maxRadius; // Normalized -1 to 1
         }
 
         function resetJoystick() {
@@ -193,44 +181,43 @@
         joystickZone.addEventListener('touchmove', handleTouch);
         joystickZone.addEventListener('touchend', resetJoystick);
 
-        // Control Loop Dispatch
+        // Transmit game control frame at ~30 FPS
         function startControlLoop() {
             setInterval(() => {
                 if (!isConnected || !conn || !conn.open) return;
-                const depthVal = parseFloat(document.getElementById('depth-input').value) / 100;
+                const depthVal = (parseFloat(document.getElementById('depth-input').value) - 50) / 50; // -1 to 1
 
                 conn.send(JSON.stringify({
                     type: "GAMEPAD",
                     x: joyX,
                     y: joyY,
                     z: depthVal,
-                    tool: selectedTool,
-                    targetMat: selectedMaterial
+                    tool: selectedTool
                 }));
             }, 30);
         }
 
-        // Haptic Vibration Patterns
-        function triggerHaptics(type) {
+        // Target-specific Vibration Patterns
+        function triggerDistinctHaptics(type) {
             const indicator = document.getElementById('haptic-indicator');
             
-            if (type === "SKIN" && navigator.vibrate) {
-                navigator.vibrate([10, 20, 10]);
+            if (type === "SKIN") {
+                if (navigator.vibrate) navigator.vibrate([15, 30, 15]); // Soft flutter
                 indicator.className = "active-skin";
                 indicator.innerText = "Skin Surface Contact";
-            } else if (type === "MUSCLE" && navigator.vibrate) {
-                navigator.vibrate([25, 15, 25]);
+            } else if (type === "MUSCLE") {
+                if (navigator.vibrate) navigator.vibrate([35, 15, 35, 15, 35]); // Deep pulsing rhythm
                 indicator.className = "active-muscle";
-                indicator.innerText = "Muscle Tissue Contact";
-            } else if (type === "BONE" && navigator.vibrate) {
-                navigator.vibrate([45, 10, 45, 10, 45]);
+                indicator.innerText = "Muscle Tissue Penetration";
+            } else if (type === "BONE") {
+                if (navigator.vibrate) navigator.vibrate([70, 10, 70, 10, 70, 10, 70]); // Intense rasping vibration
                 indicator.className = "active-bone";
-                indicator.innerText = "Hard Bone Contact";
+                indicator.innerText = "Hard Bone Contact!";
             }
 
             setTimeout(() => {
                 indicator.className = "";
-                indicator.innerText = "Surface Neutral";
+                indicator.innerText = "Haptic Surface Neutral";
             }, 100);
         }
     </script>

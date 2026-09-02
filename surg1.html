@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robotic Surgical Station - Command Center</title>
+    <title>Surgical Command Center - 3D Spatial Audio & Dynamic Robotics</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #f1f5f9; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow: hidden; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        /* Light-Mode Glassmorphic HUD */
         .hud-panel {
-            position: absolute; z-index: 10; background: rgba(255, 255, 255, 0.90);
+            position: absolute; z-index: 10; background: rgba(255, 255, 255, 0.9);
             border: 1px solid #cbd5e1; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
             backdrop-filter: blur(8px); border-radius: 8px; padding: 14px; pointer-events: auto;
         }
-        #telemetry-hud { top: 20px; left: 20px; width: 290px; }
+        #telemetry-hud { top: 20px; left: 20px; width: 300px; }
         #controls-hud { top: 20px; right: 20px; width: 280px; text-align: right; }
         #qr-hud { bottom: 20px; left: 20px; width: 150px; text-align: center; }
         
@@ -37,58 +36,64 @@
         #qrcode { margin-top: 6px; display: flex; justify-content: center; background: #fff; padding: 4px; border-radius: 4px; border: 1px solid #e2e8f0; }
     </style>
 
-    <!-- Reputed FOSS CDN Libraries -->
+    <!-- FOSS CDN Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
     <div id="canvas-container"></div>
 
-    <!-- Diagnostic HUD -->
+    <!-- Diagnostic Telemetry Panel -->
     <div id="telemetry-hud" class="hud-panel">
-        <h1>Telemetry & State</h1>
+        <h1>Surgical Telemetry</h1>
         <div class="metric"><span>Peer ID:</span> <span id="peer-id-display" class="value">Generating...</span></div>
         <div class="metric"><span>Link Status:</span> <span id="conn-status" class="status-pill">DISCONNECTED</span></div>
         <div class="metric"><span>Active Tool:</span> <span id="tool-display" class="value">SCALPEL</span></div>
-        <div class="metric"><span>Target Tissue:</span> <span id="target-display" class="value">SKIN</span></div>
-        <div class="metric"><span>Layer Collision:</span> <span id="collision-display" class="value" style="color: #64748b;">NONE</span></div>
+        <div class="metric"><span>Active Layer:</span> <span id="collision-display" class="value" style="color: #64748b;">NONE</span></div>
+        <div class="metric"><span>Audio Panning (X):</span> <span id="pan-display" class="value">0.00</span></div>
     </div>
 
-    <!-- Audio Safety & Station HUD -->
+    <!-- Station Controls -->
     <div id="controls-hud" class="hud-panel">
-        <h1>Audio Control</h1>
-        <div class="metric"><span>Audio Governor:</span> <span class="value">-6dB Hard Cap</span></div>
-        <button id="init-audio-btn">Initialize Audio Engine</button>
+        <h1>Spatial Audio</h1>
+        <div class="metric"><span>Ear Safety Cap:</span> <span class="value">-6dB Governor</span></div>
+        <button id="init-audio-btn">Enable 3D Audio Engine</button>
     </div>
 
-    <!-- Auto-Pairing QR Code -->
+    <!-- QR Code Container -->
     <div id="qr-hud" class="hud-panel">
         <h1>Scan Gamepad</h1>
         <div id="qrcode"></div>
     </div>
 
     <script>
-        // --- 1. Audio Engine with Ear-Safety Governor ---
+        // --- 1. HRTF 3D Spatial Audio Engine with Ear Safety ---
         let audioCtx, masterLimiter, spatialPanner;
 
         function initAudioEngine() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Dynamics Compressor Hard Limiter caps dynamic audio spikes
+
+            // Ear Safety Governor: Dynamic Compressor capping dynamic spikes at -6dB
             masterLimiter = audioCtx.createDynamicsCompressor();
-            masterLimiter.threshold.setValueAtTime(-6, audioCtx.currentTime); // -6dB safety limit
+            masterLimiter.threshold.setValueAtTime(-6, audioCtx.currentTime);
             masterLimiter.knee.setValueAtTime(0, audioCtx.currentTime);
             masterLimiter.ratio.setValueAtTime(20, audioCtx.currentTime);
             masterLimiter.attack.setValueAtTime(0.003, audioCtx.currentTime);
             masterLimiter.release.setValueAtTime(0.1, audioCtx.currentTime);
             masterLimiter.connect(audioCtx.destination);
 
+            // True HRTF 3D Panner
             spatialPanner = audioCtx.createPanner();
             spatialPanner.panningModel = 'HRTF';
+            spatialPanner.distanceModel = 'inverse';
+            spatialPanner.refDistance = 1;
+            spatialPanner.maxDistance = 10;
+            spatialPanner.rolloffFactor = 1;
             spatialPanner.connect(masterLimiter);
 
-            document.getElementById('init-audio-btn').innerText = "Audio Active";
+            document.getElementById('init-audio-btn').innerText = "3D Audio Active";
             document.getElementById('init-audio-btn').style.background = "#22c55e";
         }
 
@@ -97,149 +102,262 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
         });
 
-        // Tool & Tissue Audio Generator
-        function triggerProceduralSound(tool, material) {
+        function playSpatialAudioEffect(tool, layer, worldPos) {
             if (!audioCtx || audioCtx.state !== 'running') return;
+
+            // Position panner accurately in 3D audio space relative to listener
+            spatialPanner.positionX.setValueAtTime(worldPos.x, audioCtx.currentTime);
+            spatialPanner.positionY.setValueAtTime(worldPos.y, audioCtx.currentTime);
+            spatialPanner.positionZ.setValueAtTime(worldPos.z, audioCtx.currentTime);
+
+            document.getElementById('pan-display').innerText = worldPos.x.toFixed(2);
 
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
 
-            if (tool === "SAW" && material === "BONE") {
+            // Multi-frequency sound profiles
+            if (tool === "SAW" && layer === "BONE") {
                 osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(850, audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-            } else if (tool === "SCALPEL" && material === "SKIN") {
+                osc.frequency.linearRampToValueAtTime(920, audioCtx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            } else if (tool === "SCALPEL" && layer === "SKIN") {
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(420, audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                osc.frequency.setValueAtTime(320, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(180, audioCtx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
             } else if (tool === "LASER") {
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.08);
+                osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.08);
                 gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-            } else { // Cautery / Muscle / Default
+            } else { // Muscle / Cautery hums
                 osc.type = 'square';
-                osc.frequency.setValueAtTime(210, audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
             }
 
             gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
             osc.connect(gain);
             gain.connect(spatialPanner);
+
             osc.start();
             osc.stop(audioCtx.currentTime + 0.09);
         }
 
-        // --- 2. Light Mode Three.js Scene Setup ---
+        // --- 2. Light Studio Three.js Scene Setup ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf1f5f9); // Clean slate light canvas
+        scene.background = new THREE.Color(0xf8fafc); // Clean medical studio canvas
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 2.5, 4.2);
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2.8, 4.2);
         camera.lookAt(0, 0, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
         container.appendChild(renderer.domElement);
 
-        // Bright Studio Lighting
-        scene.add(new THREE.AmbientLight(0xffffff, 0.95));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(5, 10, 7);
-        scene.add(dirLight);
+        // Studio Lighting Strategy
+        scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+        
+        const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        mainLight.position.set(3, 8, 5);
+        mainLight.castShadow = true;
+        scene.add(mainLight);
 
-        // --- 3. Multi-Layer Anatomical Arm & Articulated Robot ---
+        const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.5);
+        fillLight.position.set(-5, 3, -2);
+        scene.add(fillLight);
+
+        // Ground shadow plane
+        const shadowPlane = new THREE.Mesh(
+            new THREE.PlaneGeometry(20, 20),
+            new THREE.ShadowMaterial({ opacity: 0.08 })
+        );
+        shadowPlane.rotation.x = -Math.PI / 2;
+        shadowPlane.position.y = -1.2;
+        scene.add(shadowPlane);
+
+        // --- 3. Anatomy Model Loader with Node Identification ---
         const anatomyGroup = new THREE.Group();
         scene.add(anatomyGroup);
+        anatomyGroup.position.set(0, 0, 0);
 
-        // Outer Skin Layer
-        const skinGeo = new THREE.CylinderGeometry(0.75, 0.75, 3.2, 32);
-        const skinMat = new THREE.MeshStandardMaterial({ color: 0xfca5a5, transparent: true, opacity: 0.55 });
-        const skinMesh = new THREE.Mesh(skinGeo, skinMat);
-        skinMesh.rotation.z = Math.PI / 2;
-        anatomyGroup.add(skinMesh);
+        let skinMesh = null, muscleMesh = null, boneMesh = null;
 
-        // Middle Muscle Layer
-        const muscleGeo = new THREE.CylinderGeometry(0.50, 0.50, 3.21, 32);
-        const muscleMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, transparent: true, opacity: 0.8 });
-        const muscleMesh = new THREE.Mesh(muscleGeo, muscleMat);
-        muscleMesh.rotation.z = Math.PI / 2;
-        anatomyGroup.add(muscleMesh);
+        const loader = new THREE.GLTFLoader();
+        loader.load('simple_arm_anatomy.glb', (gltf) => {
+            const arm = gltf.scene;
+            anatomyGroup.add(arm);
+            
+            // Adjust positioning & rotation for ideal workspace alignment
+            arm.scale.set(1.8, 1.8, 1.8);
+            arm.rotation.y = Math.PI / 2;
+            arm.position.set(0, -0.5, 0);
 
-        // Inner Bone Core Layer
-        const boneGeo = new THREE.CylinderGeometry(0.22, 0.22, 3.22, 32);
-        const boneMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2 });
-        const boneMesh = new THREE.Mesh(boneGeo, boneMat);
-        boneMesh.rotation.z = Math.PI / 2;
-        anatomyGroup.add(boneMesh);
+            // Target nodes from GLB Scene Graph
+            arm.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
 
-        // Articulated Robot Arm
-        const robotGroup = new THREE.Group();
-        scene.add(robotGroup);
+                    if (child.name === "Object_2") {
+                        // Muscle tissue
+                        muscleMesh = child;
+                        muscleMesh.material = new THREE.MeshStandardMaterial({
+                            color: 0xef4444, roughness: 0.4, metalness: 0.1
+                        });
+                    } else if (child.name === "Object_3") {
+                        // Main Bone structure
+                        boneMesh = child;
+                        boneMesh.material = new THREE.MeshStandardMaterial({
+                            color: 0xf8fafc, roughness: 0.25, metalness: 0.05
+                        });
+                    } else if (child.name === "Object_4") {
+                        // Connective tendon / skin boundary layer
+                        skinMesh = child;
+                        skinMesh.material = new THREE.MeshStandardMaterial({
+                            color: 0xfbcfe8, roughness: 0.6, transparent: true, opacity: 0.85
+                        });
+                    }
+                }
+            });
+        }, undefined, () => {
+            // Procedural fallback if model fails to load
+            const fallbackGeo = new THREE.CylinderGeometry(0.4, 0.35, 3, 32);
+            muscleMesh = new THREE.Mesh(fallbackGeo, new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+            muscleMesh.rotation.z = Math.PI / 2;
+            anatomyGroup.add(muscleMesh);
+        });
 
-        const armBaseGeo = new THREE.BoxGeometry(0.5, 0.2, 0.5);
-        const armBaseMat = new THREE.MeshStandardMaterial({ color: 0x2563eb });
-        const armBase = new THREE.Mesh(armBaseGeo, armBaseMat);
-        robotGroup.add(armBase);
+        // --- 4. Articulated Procedural Three.js Robot Arm ---
+        const robotBase = new THREE.Group();
+        scene.add(robotBase);
+        robotBase.position.set(0, 2.2, -0.5);
 
-        const toolShaftGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.2, 16);
-        const toolShaftMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8 });
-        const toolShaft = new THREE.Mesh(toolShaftGeo, toolShaftMat);
-        toolShaft.position.y = -0.6;
-        robotGroup.add(toolShaft);
+        // Base mount
+        const mountMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.25, 0.3, 0.2, 32),
+            new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.2 })
+        );
+        robotBase.add(mountMesh);
 
-        const toolTipGeo = new THREE.ConeGeometry(0.06, 0.25, 16);
-        const toolTipMat = new THREE.MeshStandardMaterial({ color: 0xef4444 });
-        const toolTip = new THREE.Mesh(toolTipGeo, toolTipMat);
-        toolTip.position.y = -1.2;
-        toolTip.rotation.x = Math.PI;
-        robotGroup.add(toolTip);
+        // Shoulder Joint
+        const shoulderJoint = new THREE.Group();
+        robotBase.add(shoulderJoint);
 
-        robotGroup.position.set(0, 1.6, 0);
+        const upperArmMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.08, 1.0, 16),
+            new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.5, roughness: 0.3 })
+        );
+        upperArmMesh.position.y = -0.5;
+        shoulderJoint.add(upperArmMesh);
 
-        // --- 4. Layer Collision Detection ---
+        // Elbow Joint
+        const elbowJoint = new THREE.Group();
+        elbowJoint.position.y = -1.0;
+        shoulderJoint.add(elbowJoint);
+
+        const forearmMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 0.9, 16),
+            new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.7, roughness: 0.2 })
+        );
+        forearmMesh.position.y = -0.45;
+        elbowJoint.add(forearmMesh);
+
+        // Tool Head & Tip (End-Effector)
+        const toolHead = new THREE.Group();
+        toolHead.position.y = -0.9;
+        elbowJoint.add(toolHead);
+
+        const toolTipMesh = new THREE.Mesh(
+            new THREE.ConeGeometry(0.04, 0.2, 16),
+            new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.9, roughness: 0.1 })
+        );
+        toolTipMesh.rotation.x = Math.PI;
+        toolHead.add(toolTipMesh);
+
+        // Articulated IK-style Solver to position robot tool tip at target targetPos
+        const toolTargetPos = new THREE.Vector3(0, 0.3, 0);
+
+        function updateRobotKinematics() {
+            const basePos = robotBase.position;
+            const dir = new THREE.Vector3().subVectors(toolTargetPos, basePos);
+            
+            // Aim shoulder joint towards target
+            robotBase.rotation.y = Math.atan2(dir.x, dir.z);
+            
+            const dist = dir.length();
+            const clampDist = THREE.MathUtils.clamp(dist, 0.5, 2.2);
+
+            // Simple 2-link joint angle solver
+            const l1 = 1.0, l2 = 0.9;
+            const cosElbow = (clampDist * clampDist - l1 * l1 - l2 * l2) / (2 * l1 * l2);
+            const elbowAngle = Math.acos(THREE.MathUtils.clamp(cosElbow, -1, 1));
+
+            shoulderJoint.rotation.x = Math.atan2(dir.y, Math.hypot(dir.x, dir.z)) - (elbowAngle * 0.4);
+            elbowJoint.rotation.x = Math.PI - elbowAngle;
+
+            // Position end-effector exactly at target position
+            toolHead.getWorldPosition(currentTipWorldPos);
+        }
+
+        const currentTipWorldPos = new THREE.Vector3();
+
+        // --- 5. Precision Collision Raycasting ---
+        const raycaster = new THREE.Raycaster();
         let currentTool = "SCALPEL";
-        let currentTargetMat = "SKIN";
-        let lastAudioTrigger = 0;
+        let lastAudioTime = 0;
 
-        function checkToolCollisions() {
-            const tipWorldPos = new THREE.Vector3();
-            toolTip.getWorldPosition(tipWorldPos);
+        function checkAnatomyCollisions() {
+            if (!muscleMesh && !boneMesh && !skinMesh) return;
 
-            // Calculate distance to horizontal central axis of the anatomical arm
-            const distFromAxis = Math.hypot(tipWorldPos.y, tipWorldPos.z);
-            let activeCollision = "NONE";
+            // Raycast downward from tool tip into anatomy
+            const rayOrigin = currentTipWorldPos.clone().add(new THREE.Vector3(0, 0.2, 0));
+            const rayDir = new THREE.Vector3(0, -1, 0);
+            
+            raycaster.set(rayOrigin, rayDir);
+            const targetObjects = [muscleMesh, boneMesh, skinMesh].filter(Boolean);
+            const intersects = raycaster.intersectObjects(targetObjects, true);
 
-            if (distFromAxis <= 0.22) {
-                activeCollision = "BONE";
-            } else if (distFromAxis <= 0.50) {
-                activeCollision = "MUSCLE";
-            } else if (distFromAxis <= 0.75) {
-                activeCollision = "SKIN";
+            let detectedLayer = "NONE";
+
+            if (intersects.length > 0 && intersects[0].distance <= 0.25) {
+                const hitObj = intersects[0].object;
+
+                if (hitObj === boneMesh || hitObj.name === "Object_3") {
+                    detectedLayer = "BONE";
+                } else if (hitObj === muscleMesh || hitObj.name === "Object_2") {
+                    detectedLayer = "MUSCLE";
+                } else if (hitObj === skinMesh || hitObj.name === "Object_4") {
+                    detectedLayer = "SKIN";
+                }
             }
 
-            const collisionElem = document.getElementById('collision-display');
-            collisionElem.innerText = activeCollision;
+            const collisionHud = document.getElementById('collision-display');
+            collisionHud.innerText = detectedLayer;
 
-            if (activeCollision !== "NONE") {
-                collisionElem.style.color = activeCollision === "BONE" ? "#0f172a" : activeCollision === "MUSCLE" ? "#ef4444" : "#d97706";
+            if (detectedLayer !== "NONE") {
+                collisionHud.style.color = detectedLayer === "BONE" ? "#0f172a" : detectedLayer === "MUSCLE" ? "#ef4444" : "#d97706";
 
                 const now = Date.now();
-                if (now - lastAudioTrigger > 90) {
-                    triggerProceduralSound(currentTool, activeCollision);
+                if (now - lastAudioTime > 90) {
+                    playSpatialAudioEffect(currentTool, detectedLayer, currentTipWorldPos);
                     if (dataChannel && dataChannel.open) {
-                        dataChannel.send(JSON.stringify({ type: "HAPTIC", pattern: activeCollision }));
+                        dataChannel.send(JSON.stringify({ type: "HAPTIC", pattern: detectedLayer }));
                     }
-                    lastAudioTrigger = now;
+                    lastAudioTime = now;
                 }
             } else {
-                collisionElem.style.color = "#64748b";
+                collisionHud.style.color = "#64748b";
             }
         }
 
-        // --- 5. WebRTC Network Engine ---
+        // --- 6. WebRTC Data Handling ---
         const peer = new Peer({
             config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] }
         });
@@ -250,7 +368,7 @@
             document.getElementById('peer-id-display').innerText = id;
             
             const currentPath = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-            const mobileUrl = `${currentPath}/mobile.html?peer=${id}`;
+            const mobileUrl = `${currentPath}/mobile1.html?peer=${id}`;
             
             document.getElementById("qrcode").innerHTML = "";
             new QRCode(document.getElementById("qrcode"), { text: mobileUrl, width: 110, height: 110 });
@@ -266,25 +384,21 @@
 
                 if (msg.type === "GAMEPAD") {
                     currentTool = msg.tool;
-                    currentTargetMat = msg.targetMat;
                     document.getElementById('tool-display').innerText = currentTool;
-                    document.getElementById('target-display').innerText = currentTargetMat;
 
-                    // Apply gamepad translations smoothly
-                    const targetX = msg.x * 1.5;
-                    const targetY = 1.2 - (msg.z * 1.5);
-                    const targetZ = msg.y * 1.0;
-
-                    robotGroup.position.x += (targetX - robotGroup.position.x) * 0.2;
-                    robotGroup.position.y += (targetY - robotGroup.position.y) * 0.2;
-                    robotGroup.position.z += (targetZ - robotGroup.position.z) * 0.2;
+                    // Update robot tool target targetPos (scaled workspace map)
+                    toolTargetPos.x = msg.x * 1.2;
+                    toolTargetPos.z = msg.y * 0.8;
+                    toolTargetPos.y = 0.1 - (msg.z * 0.6); // Plunge depth control
                 }
             });
         });
 
+        // Main Animation Loop
         function animate() {
             requestAnimationFrame(animate);
-            checkToolCollisions();
+            updateRobotKinematics();
+            checkAnatomyCollisions();
             renderer.render(scene, camera);
         }
         animate();
