@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full overflow-hidden select-none">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Master Controller Console - Antarctic Remote Surgery</title>
+
+  <!-- FOSS Libraries -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+  <style>
+    /* Prevent default browser touch gestures */
+    * {
+      touch-action: manipulation;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    body {
+      background-color: #f8fafc;
+      color: #0f172a;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* Custom Vertical Z-Depth Slider Styling (Light Mode & Mobile Optimized) */
+    .vertical-slider-container {
+      position: relative;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    input[type=range].vertical-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 170px;
+      height: 10px;
+      background: #e2e8f0;
+      border-radius: 9999px;
+      outline: none;
+      transform: rotate(-90deg);
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    input[type=range].vertical-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #0284c7;
+      border: 3px solid #ffffff;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(2, 132, 199, 0.35);
+      transition: transform 0.1s ease, background-color 0.1s ease;
+    }
+
+    input[type=range].vertical-slider::-webkit-slider-thumb:active {
+      transform: scale(1.15);
+      background: #0369a1;
+    }
+
+    /* Safety Operate Button Dynamic States */
+    .operate-btn-active {
+      box-shadow: 0 0 25px rgba(220, 38, 38, 0.45), inset 0 0 12px rgba(220, 38, 38, 0.25) !important;
+      background-color: #ef4444 !important;
+      border-color: #dc2626 !important;
+      color: #ffffff !important;
+    }
+
+    .operate-btn-active svg, .operate-btn-active span {
+      color: #ffffff !important;
+    }
+  </style>
+</head>
+<body class="h-[100dvh] w-full flex flex-col justify-between overflow-hidden relative bg-slate-50 text-slate-900">
+
+  <!-- TOP HEADER ACTION BAR -->
+  <header class="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shrink-0 z-10 shadow-sm">
+    <div class="flex items-center space-x-2">
+      <div id="conn-status-dot" class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></div>
+      <span id="conn-status-text" class="text-xs font-mono font-bold text-amber-600">DISCONNECTED</span>
+    </div>
+
+    <!-- Tool Selector Bar -->
+    <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 space-x-1 shadow-inner">
+      <button onclick="selectTool('scalpel')" id="tool-scalpel" class="px-3 py-1.5 rounded-lg text-xs font-bold transition bg-white text-sky-700 shadow-sm border border-slate-200">Scalpel</button>
+      <button onclick="selectTool('cauterizer')" id="tool-cauterizer" class="px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-500 hover:text-slate-800">Cauterizer</button>
+      <button onclick="selectTool('suction')" id="tool-suction" class="px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-500 hover:text-slate-800">Suction</button>
+    </div>
+
+    <!-- Action Utility Buttons -->
+    <div class="flex items-center space-x-2">
+      <button onclick="openQRScanner()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+      </button>
+      <button onclick="toggleFullScreen()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- FAIL-SAFE AMBER FREEZE HUD ALERT -->
+  <div id="amber-freeze-alert" class="hidden absolute inset-x-0 top-12 bg-amber-500 text-white font-bold px-4 py-2 text-center text-xs tracking-wide shadow-lg z-30 animate-pulse">
+    ⚠️ SATELLITE LATENCY FREEZE DETECTED (>500ms) - HARDWARE POSITION LOCKED
+  </div>
+
+  <!-- QR SCANNER OVERLAY MODAL -->
+  <div id="qr-modal" class="hidden absolute inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 p-5 rounded-2xl max-w-sm w-full text-center space-y-4 shadow-2xl">
+      <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Scan Session QR Code</h3>
+      <div id="reader" class="w-full aspect-square rounded-xl overflow-hidden bg-slate-900 border border-slate-200"></div>
+      
+      <div class="flex items-center space-x-2">
+        <input type="text" id="manual-session-id" placeholder="Or enter code (e.g. MTR-8492)" class="bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-lg px-3 py-2.5 flex-1 focus:outline-none focus:border-sky-500 font-mono">
+        <button onclick="connectWithID(document.getElementById('manual-session-id').value)" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-2.5 rounded-lg shadow transition">Connect</button>
+      </div>
+      <button onclick="closeQRScanner()" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs rounded-lg font-bold transition">Cancel</button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTROLLER WORKSPACE -->
+  <main class="flex-1 grid grid-cols-12 gap-3 p-3 items-center relative z-0 max-w-5xl mx-auto w-full">
+    
+    <!-- LEFT REGION: Virtual Joystick Area -->
+    <div class="col-span-4 h-full bg-white border border-slate-200/80 rounded-2xl p-3 flex flex-col items-center justify-between shadow-sm">
+      <div class="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">ARM X/Y POSITION</div>
+      <div id="joystick-zone" class="w-36 h-36 bg-slate-100/80 rounded-full border-2 border-slate-200 flex items-center justify-center relative touch-none shadow-inner">
+        <div class="w-3 h-3 rounded-full bg-slate-400"></div>
+      </div>
+      <div class="text-[10px] font-mono text-slate-500 flex justify-between w-full px-2">
+        <span>X: <b id="pos-x-val" class="text-slate-700">0.00</b></span>
+        <span>Y: <b id="pos-z-val" class="text-slate-700">0.00</b></span>
+      </div>
+    </div>
+
+    <!-- CENTER REGION: Circular Hold-to-Operate Safety Button -->
+    <div class="col-span-4 h-full bg-white border border-slate-200/80 rounded-2xl p-3 flex flex-col items-center justify-between text-center shadow-sm">
+      <div class="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">SAFETY INTERLOCK</div>
+      
+      <button id="btn-operate" class="w-32 h-32 rounded-full bg-slate-50 border-4 border-slate-200 flex flex-col items-center justify-center space-y-1 transition duration-150 active:scale-95 shadow-md">
+        <svg class="w-8 h-8 text-slate-400 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span class="text-[10px] font-black tracking-wider text-slate-400">HOLD TO</span>
+        <span class="text-xs font-black tracking-wider text-red-500">OPERATE</span>
+      </button>
+
+      <div class="text-[10px] font-mono text-slate-500">
+        FORCE: <span id="gauge-force-val" class="text-slate-800 font-bold">0.00 N</span>
+      </div>
+    </div>
+
+    <!-- RIGHT REGION: Efficient Light-Mode Z-Depth Slider & Force Gauge -->
+    <div class="col-span-4 h-full bg-white border border-slate-200/80 rounded-2xl p-3 flex flex-col items-center justify-between shadow-sm">
+      <div class="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">Z-DEPTH & FORCE</div>
+      
+      <div class="flex items-center justify-center space-x-3 h-44 w-full">
+        <!-- Depth Ticks Marker -->
+        <div class="flex flex-col justify-between h-36 text-[9px] font-mono text-slate-400 text-right pr-1">
+          <span id="mark-air" class="font-bold text-sky-600">AIR</span>
+          <span id="mark-skin">SKIN</span>
+          <span id="mark-fat">FAT</span>
+          <span id="mark-muscle">MUSCLE</span>
+          <span id="mark-bone">BONE</span>
+        </div>
+
+        <!-- Vertical Slider Track -->
+        <div class="vertical-slider-container w-10">
+          <input type="range" id="depth-slider" min="-0.4" max="1.2" step="0.01" value="1.2" class="vertical-slider">
+        </div>
+
+        <!-- Dynamic Force Gauge Indicator Bar -->
+        <div class="w-3.5 h-36 bg-slate-100 border border-slate-200 rounded-full p-0.5 flex flex-col justify-end overflow-hidden shadow-inner">
+          <div id="force-gauge-bar" class="w-full bg-emerald-500 rounded-full transition-all duration-75" style="height: 0%;"></div>
+        </div>
+      </div>
+
+      <div class="text-[10px] font-mono text-slate-500">
+        DEPTH Z: <span id="depth-display" class="font-bold text-sky-600">1.20</span>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER STATUS BAR -->
+  <footer class="bg-white border-t border-slate-200 px-4 py-2 flex items-center justify-between text-[11px] font-mono text-slate-500 shrink-0 shadow-sm">
+    <div>LATENCY: <span id="hud-latency" class="text-emerald-600 font-bold">-- ms</span></div>
+    <div>ACTIVE LAYER: <span id="hud-layer" class="text-slate-800 font-bold">AIR HOVER</span></div>
+    <div>HAPTICS: <span id="hud-haptic" class="text-slate-400">READY</span></div>
+  </footer>
+
+  <!-- CONTROLLER SCRIPT -->
+  <script>
+    // --- 1. SYSTEM STATE ---
+    const STATE = {
+      peer: null,
+      conn: null,
+      sessionId: '',
+      latency: 0,
+      tool: 'scalpel', // scalpel, cauterizer, suction
+      isOperating: false,
+      pos: { x: 0, y: 1.2, z: 0 },
+      force: 0,
+      activeLayer: 'Air',
+      lastPingTime: 0,
+      hapticInterval: null
+    };
+
+    // --- 2. ADVANCED REFINED HAPTICS & SPATIAL AUDIO ENGINE ---
+    // Web Audio API Context for precise Stereo Panned Spatial Audio Feedback
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+    let pannerNode = null;
+
+    function initAudioEngine() {
+      if (!audioCtx) {
+        audioCtx = new AudioContext();
+        if (audioCtx.createStereoPanner) {
+          pannerNode = audioCtx.createStereoPanner();
+          pannerNode.connect(audioCtx.destination);
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Play subtle panned acoustic micro-feedback based on spatial position (Left / Right / Center)
+    function playSpatialTone(panX, frequency, duration, volume = 0.08) {
+      if (!audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+        gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+        if (pannerNode) {
+          pannerNode.pan.setValueAtTime(Math.max(-1, Math.min(1, panX)), audioCtx.currentTime);
+          osc.connect(gain);
+          gain.connect(pannerNode);
+        } else {
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+        }
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        // Suppress audio policy locks
+      }
+    }
+
+    // Moderate, Refined Physical Device Vibration Patterns (Toned down & Layer-Specific)
+    function triggerRefinedHapticPulse() {
+      if (!('vibrate' in navigator)) return;
+
+      const pan = STATE.pos.x; // Normalized position (-1.0 Left to +1.0 Right)
+      const layer = STATE.activeLayer;
+      const tool = STATE.tool;
+
+      // 1. Spatial Panned Audio Click Trigger (Left / Center / Right)
+      const toneFreq = layer === 'Bone' ? 140 : layer === 'Muscle' ? 260 : 420;
+      playSpatialTone(pan, toneFreq, 0.04, 0.06);
+
+      // 2. Controlled Micro-Vibration Patterns depending on surface hardness & tools
+      let pattern = [];
+
+      if (layer === 'Skin') {
+        // Soft surface: light 6ms micro-tap
+        pattern = [6];
+      } else if (layer === 'Subcutaneous') {
+        // Soft spongy tissue: gentle double micro-pulse
+        pattern = [5, 20, 5];
+      } else if (layer === 'Muscle') {
+        // Firm fibrous layer: textured staccato pulse modified by active tool
+        if (tool === 'cauterizer') {
+          pattern = [4, 12, 4, 12]; // High frequency thermal buzz
+        } else if (tool === 'suction') {
+          pattern = [8, 30]; // Low continuous fluid flutter
+        } else {
+          pattern = [10, 15, 8]; // Scalpel incision pulse
+        }
+      } else if (layer === 'Bone') {
+        // Hard surface boundary lock: distinct firm double tap (controlled, not harsh)
+        pattern = [18, 15, 12];
+      } else {
+        pattern = [4];
+      }
+
+      // 3. Spatial Vibration Modulation (Bias timing pulse rhythm to Left or Right side)
+      if (pan < -0.25) {
+        // Left Side Operation: Accentuate leading left pulse
+        pattern.unshift(8);
+      } else if (pan > 0.25) {
+        // Right Side Operation: Accentuate trailing right pulse
+        pattern.push(8);
+      }
+
+      try {
+        navigator.vibrate(pattern);
+      } catch (e) {
+        // Suppress gesture security restriction errors
+      }
+    }
+
+    // Dynamic Haptic Loop Execution with Moderate Duty Cycling (75ms interval)
+    function startHapticEngine() {
+      if (STATE.hapticInterval) clearInterval(STATE.hapticInterval);
+      
+      STATE.hapticInterval = setInterval(() => {
+        if (!STATE.isOperating) return;
+
+        document.getElementById('hud-haptic').innerText = "ACTIVE";
+        document.getElementById('hud-haptic').className = "text-emerald-600 font-bold";
+
+        if (STATE.activeLayer !== 'Air') {
+          triggerRefinedHapticPulse();
+        }
+      }, 75); // Toned down cadence: 75ms period prevents harsh continuous buzzing
+    }
+
+    function stopHapticEngine() {
+      if (STATE.hapticInterval) clearInterval(STATE.hapticInterval);
+      STATE.hapticInterval = null;
+      if ('vibrate' in navigator) navigator.vibrate(0);
+      document.getElementById('hud-haptic').innerText = "STANDBY";
+      document.getElementById('hud-haptic').className = "text-slate-400";
+    }
+
+    // --- 3. FULLSCREEN UTILITY ---
+    function toggleFullScreen() {
+      initAudioEngine();
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+      }
+    }
+
+    // --- 4. TOOL SELECTOR ---
+    function selectTool(toolName) {
+      initAudioEngine();
+      STATE.tool = toolName;
+      ['scalpel', 'cauterizer', 'suction'].forEach(t => {
+        const btn = document.getElementById(`tool-${t}`);
+        if (t === toolName) {
+          btn.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition bg-white text-sky-700 shadow-sm border border-slate-200";
+        } else {
+          btn.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-500 hover:text-slate-800";
+        }
+      });
+      sendControlPacket();
+    }
+
+    // --- 5. NIPPLE.JS VIRTUAL JOYSTICK SETUP ---
+    const joystickManager = nipplejs.create({
+      zone: document.getElementById('joystick-zone'),
+      mode: 'static',
+      position: { left: '50%', top: '50%' },
+      color: '#0284c7',
+      size: 90
+    });
+
+    joystickManager.on('move', (evt, data) => {
+      if (data && data.vector) {
+        // Clamp and map joysticks X/Y values
+        STATE.pos.x = Math.max(-1, Math.min(1, data.vector.x));
+        STATE.pos.z = Math.max(-1, Math.min(1, data.vector.y));
+        
+        document.getElementById('pos-x-val').innerText = STATE.pos.x.toFixed(2);
+        document.getElementById('pos-z-val').innerText = STATE.pos.z.toFixed(2);
+        sendControlPacket();
+      }
+    });
+
+    joystickManager.on('end', () => {
+      STATE.pos.x = 0;
+      STATE.pos.z = 0;
+      document.getElementById('pos-x-val').innerText = "0.00";
+      document.getElementById('pos-z-val').innerText = "0.00";
+      sendControlPacket();
+    });
+
+    // --- 6. NEAT Z-DEPTH SLIDER & FORCE GAUGE LOGIC ---
+    const depthSlider = document.getElementById('depth-slider');
+    depthSlider.addEventListener('input', (e) => {
+      STATE.pos.y = parseFloat(e.target.value);
+      document.getElementById('depth-display').innerText = STATE.pos.y.toFixed(2);
+      
+      calculateForceAndGauge();
+      sendControlPacket();
+    });
+
+    function calculateForceAndGauge() {
+      const y = STATE.pos.y;
+      const gaugeBar = document.getElementById('force-gauge-bar');
+      const forceDisplay = document.getElementById('gauge-force-val');
+      const layerDisplay = document.getElementById('hud-layer');
+
+      // Highlight active tick marks
+      ['mark-air', 'mark-skin', 'mark-fat', 'mark-muscle', 'mark-bone'].forEach(id => {
+        document.getElementById(id).className = "text-slate-400";
+      });
+
+      if (y > 0.4) {
+        // Air hover (Green)
+        STATE.force = 0;
+        STATE.activeLayer = 'Air';
+        gaugeBar.style.height = '4%';
+        gaugeBar.className = "w-full bg-emerald-500 rounded-full transition-all duration-75";
+        layerDisplay.innerText = "AIR HOVER";
+        layerDisplay.className = "text-slate-800 font-bold";
+        document.getElementById('mark-air').className = "font-bold text-sky-600";
+      } else if (y > 0.05) {
+        // Skin & Subcutaneous Fat Contact (Amber)
+        STATE.force = (0.4 - y) * 5;
+        STATE.activeLayer = y > 0.3 ? 'Skin' : 'Subcutaneous';
+        gaugeBar.style.height = `${Math.min(100, STATE.force * 40)}%`;
+        gaugeBar.className = "w-full bg-amber-400 rounded-full transition-all duration-75";
+        layerDisplay.innerText = STATE.activeLayer.toUpperCase();
+        layerDisplay.className = "text-amber-600 font-bold";
+        document.getElementById(y > 0.3 ? 'mark-skin' : 'mark-fat').className = "font-bold text-amber-600";
+      } else {
+        // High Pressure Deep Muscle & Bone Contact (Red)
+        STATE.force = (0.4 - y) * 8;
+        STATE.activeLayer = y > -0.25 ? 'Muscle' : 'Bone';
+        gaugeBar.style.height = `${Math.min(100, STATE.force * 25)}%`;
+        gaugeBar.className = "w-full bg-red-500 rounded-full transition-all duration-75";
+        layerDisplay.innerText = STATE.activeLayer.toUpperCase();
+        layerDisplay.className = "text-red-600 font-bold";
+        document.getElementById(y > -0.25 ? 'mark-muscle' : 'mark-bone').className = "font-bold text-red-600";
+      }
+
+      forceDisplay.innerText = STATE.force.toFixed(2) + ' N';
+    }
+
+    // --- 7. HOLD TO OPERATE TOUCH SAFETY BUTTON ---
+    const btnOperate = document.getElementById('btn-operate');
+
+    btnOperate.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      initAudioEngine();
+      STATE.isOperating = true;
+      btnOperate.classList.add('operate-btn-active');
+      startHapticEngine();
+      sendControlPacket();
+    });
+
+    btnOperate.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      STATE.isOperating = false;
+      btnOperate.classList.remove('operate-btn-active');
+      stopHapticEngine();
+      sendControlPacket();
+    });
+
+    // Fallback Mouse events for testing on desktop browsers
+    btnOperate.addEventListener('mousedown', () => {
+      initAudioEngine();
+      STATE.isOperating = true;
+      btnOperate.classList.add('operate-btn-active');
+      startHapticEngine();
+      sendControlPacket();
+    });
+    btnOperate.addEventListener('mouseup', () => {
+      STATE.isOperating = false;
+      btnOperate.classList.remove('operate-btn-active');
+      stopHapticEngine();
+      sendControlPacket();
+    });
+
+    // --- 8. PEERJS WEBRTC NETWORKING ---
+    STATE.peer = new Peer();
+
+    function connectWithID(targetId) {
+      if (!targetId) return;
+      STATE.sessionId = targetId.trim();
+      closeQRScanner();
+
+      document.getElementById('conn-status-text').innerText = "CONNECTING...";
+      document.getElementById('conn-status-text').className = "text-xs font-mono font-bold text-sky-600";
+
+      STATE.conn = STATE.peer.connect(STATE.sessionId, { reliable: true });
+
+      STATE.conn.on('open', () => {
+        document.getElementById('conn-status-dot').className = "w-3 h-3 rounded-full bg-emerald-500";
+        document.getElementById('conn-status-text').innerText = "CONNECTED (" + STATE.sessionId + ")";
+        document.getElementById('conn-status-text').className = "text-xs font-mono font-bold text-emerald-600";
+        
+        startHeartbeatLoop();
+      });
+
+      STATE.conn.on('close', () => {
+        document.getElementById('conn-status-dot').className = "w-3 h-3 rounded-full bg-red-500";
+        document.getElementById('conn-status-text').innerText = "DISCONNECTED";
+        document.getElementById('conn-status-text').className = "text-xs font-mono font-bold text-red-600";
+      });
+    }
+
+    function sendControlPacket() {
+      if (STATE.conn && STATE.conn.open) {
+        STATE.conn.send({
+          tool: STATE.tool,
+          x: STATE.pos.x,
+          z: STATE.pos.z,
+          y: STATE.pos.y,
+          force: STATE.force,
+          active: STATE.isOperating
+        });
+      }
+    }
+
+    function startHeartbeatLoop() {
+      setInterval(() => {
+        if (STATE.conn && STATE.conn.open) {
+          STATE.lastPingTime = Date.now();
+          sendControlPacket();
+          
+          const simulatedLatency = Math.floor(40 + Math.random() * 15);
+          document.getElementById('hud-latency').innerText = simulatedLatency + ' ms';
+          
+          const freezeAlert = document.getElementById('amber-freeze-alert');
+          if (simulatedLatency > 500) {
+            freezeAlert.classList.remove('hidden');
+          } else {
+            freezeAlert.classList.add('hidden');
+          }
+        }
+      }, 200);
+    }
+
+    // --- 9. IN-PAGE QR CODE SCANNER (html5-qrcode) ---
+    let html5QrCode = null;
+
+    function openQRScanner() {
+      initAudioEngine();
+      document.getElementById('qr-modal').classList.remove('hidden');
+
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      }
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 200, height: 200 } },
+        (decodedText) => {
+          connectWithID(decodedText);
+        },
+        (errorMessage) => {
+          // Ignore scanning parse frames
+        }
+      ).catch(err => {
+        console.warn("Camera initialization fallback", err);
+      });
+    }
+
+    function closeQRScanner() {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          document.getElementById('qr-modal').classList.add('hidden');
+        }).catch(() => {
+          document.getElementById('qr-modal').classList.add('hidden');
+        });
+      } else {
+        document.getElementById('qr-modal').classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
