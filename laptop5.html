@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maitri / Bharati Digital Twin - Remote Surgery Simulator</title>
+
+  <!-- External Libraries -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/earcut.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    body {
+      background-color: #050811;
+      color: #e2e8f0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .glass-panel {
+      background: rgba(13, 19, 34, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    .viewport-container {
+      position: relative;
+    }
+
+    .viewport-vignette {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle, transparent 65%, rgba(5, 8, 17, 0.85) 100%);
+      border-radius: 0.75rem;
+    }
+
+    .scanline {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0, 0, 0, 0.25) 50%, rgba(0, 0, 0, 0.25));
+      background-size: 100% 4px;
+      opacity: 0.3;
+      border-radius: 0.75rem;
+    }
+
+    canvas {
+      outline: none;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(56, 189, 248, 0.3);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- TOP HUD: Antarctic Telemetry Header -->
+  <header class="bg-slate-950/90 backdrop-blur-md text-slate-100 px-6 py-2.5 flex items-center justify-between border-b border-slate-800/80 z-30">
+    <div class="flex items-center space-x-4">
+      <div class="relative flex items-center justify-center">
+        <div class="w-3 h-3 rounded-full bg-emerald-500 animate-ping absolute opacity-75"></div>
+        <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 relative" id="status-indicator"></div>
+      </div>
+      <div>
+        <h1 class="font-bold tracking-wider text-base text-slate-100 flex items-center gap-2">
+          ANTARCTIC SURGICAL DIGITAL TWIN
+          <span class="text-[10px] font-mono tracking-normal text-sky-400 bg-sky-950/80 border border-sky-800/60 rounded px-2 py-0.5">
+            Maitri & Bharati Stations
+          </span>
+        </h1>
+      </div>
+    </div>
+    
+    <div class="flex items-center space-x-6 text-xs font-mono">
+      <div class="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1 rounded border border-slate-800">
+        <span class="text-slate-400">Station Temp:</span>
+        <span class="text-sky-400 font-semibold">-32.4°C</span>
+      </div>
+      <div class="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1 rounded border border-slate-800">
+        <span class="text-slate-400">VSAT Transceiver:</span>
+        <span id="telemetry-link" class="text-emerald-400 font-semibold">Active (Primary Ku-Band)</span>
+      </div>
+      <div class="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1 rounded border border-slate-800">
+        <span class="text-slate-400">Bandwidth:</span>
+        <span id="telemetry-bw" class="text-slate-200">256 kbps</span>
+      </div>
+      <div class="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1 rounded border border-slate-800">
+        <span class="text-slate-400">RTT Latency:</span>
+        <span id="telemetry-latency" class="text-emerald-400 font-semibold">48 ms</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <div class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden relative z-10">
+    
+    <!-- LEFT PANEL: Controller Setup & Vitals -->
+    <aside class="col-span-3 flex flex-col space-y-4">
+      
+      <!-- Session QR Card -->
+      <div class="glass-panel p-4 rounded-xl flex flex-col items-center text-center relative overflow-hidden">
+        <div class="absolute -top-10 -left-10 w-24 h-24 bg-sky-500/10 rounded-full blur-xl"></div>
+        <h2 class="text-[11px] font-bold uppercase tracking-widest text-sky-400 mb-2 font-mono flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Master Controller Pairing
+        </h2>
+        
+        <div class="p-2.5 bg-white rounded-lg shadow-lg border border-slate-300 my-2 relative group">
+          <div id="qrcode"></div>
+        </div>
+        
+        <p class="text-[11px] text-slate-400 mt-1">Scan QR code using mobile device interface</p>
+        <div class="mt-2 text-xs font-mono bg-slate-900/90 text-sky-300 px-3 py-1 rounded-full border border-sky-800/50 shadow-inner" id="session-id-display">
+          ID: Generating...
+        </div>
+      </div>
+
+      <!-- Patient Vitals Console -->
+      <div class="glass-panel p-4 rounded-xl flex-1 flex flex-col justify-between">
+        <div>
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-[11px] font-bold uppercase tracking-widest text-slate-400 font-mono">Telemetry Monitor</h2>
+            <span class="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> PATIENT NORMAL
+            </span>
+          </div>
+          
+          <!-- High Definition ECG Waveform Canvas -->
+          <div class="bg-slate-950/90 rounded-lg p-3 mb-4 border border-slate-800/80 shadow-inner relative overflow-hidden">
+            <div class="flex justify-between text-[10px] font-mono text-emerald-400 mb-1">
+              <span class="flex items-center gap-1"><span class="w-2 h-0.5 bg-emerald-400 inline-block"></span> ECG LEAD II</span>
+              <span id="hr-display" class="font-bold text-emerald-300">72 BPM</span>
+            </div>
+            <canvas id="ecgCanvas" width="280" height="65" class="w-full h-16"></canvas>
+          </div>
+
+          <!-- Vitals Grid -->
+          <div class="grid grid-cols-2 gap-2.5 font-mono">
+            <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+              <div class="text-[10px] text-slate-400 mb-0.5">BLOOD PRESSURE</div>
+              <div class="text-sm font-bold text-slate-100">120/80 <span class="text-[10px] font-normal text-slate-500">mmHg</span></div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+              <div class="text-[10px] text-slate-400 mb-0.5">OXYGENATION</div>
+              <div class="text-sm font-bold text-sky-400">98% <span class="text-[10px] font-normal text-slate-500">SpO2</span></div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+              <div class="text-[10px] text-slate-400 mb-0.5">BODY TEMP</div>
+              <div class="text-sm font-bold text-amber-400">36.8 <span class="text-[10px] font-normal text-slate-500">°C</span></div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+              <div class="text-[10px] text-slate-400 mb-0.5">RESPIRATION</div>
+              <div class="text-sm font-bold text-emerald-400">16 <span class="text-[10px] font-normal text-slate-500">rpm</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Safety Matrix -->
+        <div class="bg-slate-900/90 p-3 rounded-lg border border-slate-800/90 text-xs text-slate-300 space-y-1.5 mt-4 font-mono">
+          <div class="flex justify-between items-center text-[11px]">
+            <span class="text-slate-400">Audio Limiter:</span>
+            <span class="font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40">-6 dB Hard Cap</span>
+          </div>
+          <div class="flex justify-between items-center text-[11px]">
+            <span class="text-slate-400">Fail-Safe Lock:</span>
+            <span id="failsafe-status" class="font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40">ARMED</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER PANEL: Real-Time 3D Anatomical Viewport -->
+    <main class="col-span-6 flex flex-col relative viewport-container bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-2xl">
+      <canvas id="renderCanvas" class="w-full h-full touch-none"></canvas>
+      <div class="viewport-vignette"></div>
+      <div class="scanline"></div>
+
+      <!-- Dynamic Surgical HUD Overlay -->
+      <div class="absolute top-4 left-4 pointer-events-none flex flex-col gap-1.5 font-mono">
+        <div class="bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded border border-slate-700/60 text-xs text-sky-400 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+          <span>ENDOSCOPIC CAM-01 [4K PBR RENDER]</span>
+        </div>
+        <div class="text-[10px] text-slate-400 pl-1">FOV: 60° • DOF: AUTO • SSS: ENABLED</div>
+      </div>
+
+      <!-- Live Tool Mode Selector Overlay -->
+      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700/80 flex items-center space-x-2 text-xs font-mono z-20 shadow-xl">
+        <button onclick="setTool('scalpel')" id="btn-tool-scalpel" class="px-3 py-1 rounded-full bg-sky-600 text-white font-semibold transition">Scalpel #10</button>
+        <button onclick="setTool('cauterizer')" id="btn-tool-cauterizer" class="px-3 py-1 rounded-full text-slate-400 hover:text-white transition">Electrocautery</button>
+        <button onclick="setTool('bonesaw')" id="btn-tool-bonesaw" class="px-3 py-1 rounded-full text-slate-400 hover:text-white transition">Oscillating Bone Saw</button>
+        <button onclick="setTool('suction')" id="btn-tool-suction" class="px-3 py-1 rounded-full text-slate-400 hover:text-white transition">Suction Irrigator</button>
+      </div>
+
+      <!-- Katabatic Blizzard Crisis Warning -->
+      <div id="crisis-banner" class="hidden absolute top-4 right-4 bg-red-600/90 text-white px-4 py-2 rounded-lg text-xs font-bold tracking-wide shadow-2xl backdrop-blur-md border border-red-400 animate-pulse flex items-center space-x-2.5 z-20">
+        <svg class="w-5 h-5 fill-current text-yellow-300" viewBox="0 0 20 20"><path d="M10 15a1 1 0 10-2 0 1 1 0 012 0zm0-11a1 1 0 00-1 1v6a1 1 0 102 0V5a1 1 0 00-1-1z"/></svg>
+        <div>
+          <div class="text-yellow-300 font-mono text-[10px] uppercase tracking-widest">VSAT Link Alert</div>
+          <div>KATABATIC BLIZZARD INTERFERENCE</div>
+        </div>
+      </div>
+
+      <!-- Safety Interlock Overlay -->
+      <div id="lock-banner" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-lg flex flex-col items-center justify-center text-white z-30">
+        <div class="w-16 h-16 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center mb-4 animate-bounce">
+          <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        </div>
+        <div class="text-2xl font-black text-red-500 tracking-wider mb-2 font-mono">SAFETY INTERLOCK ACTIVE</div>
+        <p class="text-xs text-slate-300 max-w-md text-center leading-relaxed">WebRTC telemetry jitter or packet loss (&gt;500ms RTT) detected over Antarctic relay. Remote surgical end-effector frozen for tissue safety.</p>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL: Satellite Simulator & Telemetry Dashboard -->
+    <aside class="col-span-3 flex flex-col space-y-4">
+      
+      <!-- Crisis Simulation Card -->
+      <div class="glass-panel p-4 rounded-xl flex-1 flex flex-col justify-between">
+        <div>
+          <h2 class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2 font-mono">Satellite Crisis Simulator</h2>
+          <p class="text-xs text-slate-400 mb-4 leading-relaxed">Inject atmospheric noise & ionospheric delays into the Maitri/Bharati satellite link to test autonomous latency safety overrides.</p>
+
+          <button id="btn-toggle-crisis" onclick="toggleCrisisMode()" class="w-full py-3 px-4 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 text-slate-100 font-bold text-xs rounded-lg border border-slate-700 shadow-lg transition duration-200 flex items-center justify-center space-x-2 font-mono">
+            <span>TRIGGER KATABATIC BLIZZARD</span>
+          </button>
+        </div>
+
+        <!-- Real-Time Instrument Telemetry -->
+        <div class="space-y-3 border-t border-slate-800/80 pt-4">
+          <h3 class="text-[11px] font-bold uppercase tracking-widest text-sky-400 font-mono">Instrument Telemetry</h3>
+          <div class="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-2 text-xs font-mono">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Active End-Effector:</span> 
+              <span id="hud-tool" class="font-bold text-sky-300">SCALPEL #10</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Anatomic Depth:</span> 
+              <span id="hud-layer" class="font-bold text-amber-400">Epidermis Layer</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Applied Force Vector:</span> 
+              <span id="hud-force" class="font-bold text-emerald-400">0.00 N</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">AI Predictive Ghost:</span> 
+              <span id="hud-ghost" class="font-bold text-slate-500">STANDBY</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-[10px] text-slate-500 text-center font-mono border-t border-slate-800/60 pt-3">
+          Ministry of Earth Sciences • National Centre for Polar & Ocean Research
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- SCRIPT ENGINE LOGIC -->
+  <script>
+    // --- 1. SIMULATION STATE & PARAMETERS ---
+    const STATE = {
+      sessionId: 'MTR-' + Math.floor(1000 + Math.random() * 9000),
+      isCrisisActive: false,
+      latency: 48,
+      lastHeartbeat: Date.now(),
+      isLocked: false,
+      tool: 'scalpel', // scalpel, cauterizer, bonesaw, suction
+      force: 0,
+      active: false,
+      targetPos: { x: 0, y: 1.4, z: 0 },
+      currentPos: { x: 0, y: 1.4, z: 0 },
+      currentLayer: 'Air Space'
+    };
+
+    document.getElementById('session-id-display').innerText = 'ID: ' + STATE.sessionId;
+
+    function setTool(toolName) {
+      STATE.tool = toolName;
+      ['scalpel', 'cauterizer', 'bonesaw', 'suction'].forEach(t => {
+        const btn = document.getElementById(`btn-tool-${t}`);
+        if (btn) {
+          if (t === toolName) {
+            btn.className = "px-3 py-1 rounded-full bg-sky-600 text-white font-semibold transition";
+          } else {
+            btn.className = "px-3 py-1 rounded-full text-slate-400 hover:text-white transition";
+          }
+        }
+      });
+      if (window.updateActiveToolMesh) {
+        window.updateActiveToolMesh(toolName);
+      }
+    }
+
+    // Auto switch tool depending on tissue depth
+    function autoSwitchToolForLayer(layer) {
+      if (layer.includes('Epidermis') && STATE.tool !== 'scalpel') {
+        setTool('scalpel');
+      } else if (layer.includes('Subcutaneous') && STATE.tool !== 'cauterizer') {
+        setTool('cauterizer');
+      } else if (layer.includes('Muscle') && STATE.tool !== 'scalpel') {
+        setTool('scalpel');
+      } else if (layer.includes('Cortical Bone') && STATE.tool !== 'bonesaw') {
+        setTool('bonesaw');
+      }
+    }
+
+    // --- 2. PEERJS WEBRTC REMOTE CONNECTIVITY ---
+    const peer = new Peer(STATE.sessionId);
+    
+    new QRCode(document.getElementById("qrcode"), {
+      text: STATE.sessionId,
+      width: 110,
+      height: 110,
+      colorDark : "#020617",
+      colorLight : "#ffffff",
+      correctLevel : QRCode.CorrectLevel.H
+    });
+
+    peer.on('connection', (conn) => {
+      document.getElementById('status-indicator').className = "w-2.5 h-2.5 rounded-full bg-emerald-400 relative";
+      
+      conn.on('data', (data) => {
+        STATE.lastHeartbeat = Date.now();
+        
+        const processDelay = STATE.isCrisisActive ? 420 + Math.random() * 90 : 0;
+        
+        setTimeout(() => {
+          if (STATE.isLocked) return;
+          
+          if (data.tool) setTool(data.tool);
+          STATE.force = data.force || 0;
+          STATE.active = data.active || false;
+          
+          // INVERT X AXIS SO PHONE SWIPE LEFT MOVES LEFT IN SCENE
+          if (data.x !== undefined) STATE.targetPos.x = -data.x * 2.8;
+          if (data.z !== undefined) STATE.targetPos.z = data.z * 2.2;
+          if (data.y !== undefined) STATE.targetPos.y = data.y;
+          
+          updateAudioSynthesis();
+        }, processDelay);
+      });
+    });
+
+    // --- 3. SAFETY INTERLOCK MONITOR ---
+    setInterval(() => {
+      const now = Date.now();
+      const timeSinceLastData = now - STATE.lastHeartbeat;
+      
+      if (STATE.isCrisisActive) {
+        STATE.latency = Math.floor(440 + Math.random() * 70);
+      } else {
+        STATE.latency = Math.floor(42 + Math.random() * 8);
+      }
+      
+      document.getElementById('telemetry-latency').innerText = STATE.latency + ' ms';
+      
+      if (STATE.latency > 500 || (timeSinceLastData > 1500 && STATE.lastHeartbeat !== 0)) {
+        STATE.isLocked = true;
+        document.getElementById('lock-banner').classList.remove('hidden');
+        document.getElementById('failsafe-status').innerText = "LOCK ENGAGED";
+        document.getElementById('failsafe-status').className = "font-bold text-red-400 bg-red-950/60 px-1.5 py-0.5 rounded border border-red-800/40 animate-pulse";
+      } else {
+        STATE.isLocked = false;
+        document.getElementById('lock-banner').classList.add('hidden');
+        document.getElementById('failsafe-status').innerText = "ARMED";
+        document.getElementById('failsafe-status').className = "font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40";
+      }
+    }, 180);
+
+    // --- 4. CRISIS SIMULATION CONTROL ---
+    function toggleCrisisMode() {
+      initAudioEngine();
+      STATE.isCrisisActive = !STATE.isCrisisActive;
+      const btn = document.getElementById('btn-toggle-crisis');
+      const banner = document.getElementById('crisis-banner');
+      const link = document.getElementById('telemetry-link');
+      const bw = document.getElementById('telemetry-bw');
+      const ghostHud = document.getElementById('hud-ghost');
+
+      if (STATE.isCrisisActive) {
+        btn.innerHTML = "<span>RESOLVE KATABATIC CRISIS</span>";
+        btn.className = "w-full py-3 px-4 bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white font-bold text-xs rounded-lg border border-red-500 shadow-xl transition duration-200 flex items-center justify-center space-x-2 font-mono animate-pulse";
+        banner.classList.remove('hidden');
+        link.innerText = "DEGRADED (Blizzard Interference)";
+        link.className = "text-red-400 font-semibold";
+        bw.innerText = "32 kbps";
+        ghostHud.innerText = "ACTIVE (PREDICTIVE)";
+        ghostHud.className = "font-bold text-amber-400 animate-pulse";
+      } else {
+        btn.innerHTML = "<span>TRIGGER KATABATIC BLIZZARD</span>";
+        btn.className = "w-full py-3 px-4 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 text-slate-100 font-bold text-xs rounded-lg border border-slate-700 shadow-lg transition duration-200 flex items-center justify-center space-x-2 font-mono";
+        banner.classList.add('hidden');
+        link.innerText = "Active (Primary Ku-Band)";
+        link.className = "text-emerald-400 font-semibold";
+        bw.innerText = "256 kbps";
+        ghostHud.innerText = "STANDBY";
+        ghostHud.className = "font-bold text-slate-500";
+      }
+    }
+
+    // --- 5. PATIENT ECG WAVEFORM MONITOR ---
+    const ecgCanvas = document.getElementById('ecgCanvas');
+    const ecgCtx = ecgCanvas.getContext('2d');
+    let ecgX = 0;
+    
+    function drawECG() {
+      ecgCtx.fillStyle = 'rgba(2, 6, 23, 0.2)';
+      ecgCtx.fillRect(0, 0, ecgCanvas.width, ecgCanvas.height);
+      
+      ecgCtx.strokeStyle = '#34d399';
+      ecgCtx.lineWidth = 1.8;
+      ecgCtx.beginPath();
+      
+      let y = 32;
+      const cycle = ecgX % 90;
+      if (cycle > 35 && cycle < 40) y = 18;
+      else if (cycle >= 40 && cycle < 44) y = 54;
+      else if (cycle >= 44 && cycle < 48) y = 6;
+      else if (cycle >= 48 && cycle < 54) y = 38;
+      
+      ecgCtx.moveTo(ecgX, 32);
+      ecgCtx.lineTo(ecgX + 2, y);
+      ecgCtx.stroke();
+      
+      ecgX = (ecgX + 2) % ecgCanvas.width;
+      requestAnimationFrame(drawECG);
+    }
+    drawECG();
+
+    // --- 6. SPATIAL AUDIO ENGINE ---
+    let audioCtx = null;
+    let masterCompressor = null;
+    let pannerNode = null;
+
+    function initAudioEngine() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+        
+        masterCompressor = audioCtx.createDynamicsCompressor();
+        masterCompressor.threshold.setValueAtTime(-6, audioCtx.currentTime);
+        masterCompressor.knee.setValueAtTime(0, audioCtx.currentTime);
+        masterCompressor.ratio.setValueAtTime(20, audioCtx.currentTime);
+        masterCompressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+        masterCompressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+        masterCompressor.connect(audioCtx.destination);
+
+        pannerNode = audioCtx.createPanner();
+        pannerNode.panningModel = 'HRTF';
+        pannerNode.connect(masterCompressor);
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    window.addEventListener('pointerdown', initAudioEngine, { once: true });
+    window.addEventListener('keydown', initAudioEngine, { once: true });
+
+    function playSoundEffect(freq, type, duration, gainVal) {
+      if (!audioCtx || audioCtx.state !== 'running') return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(pannerNode);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function updateAudioSynthesis() {
+      if (!audioCtx || audioCtx.state !== 'running') return;
+      pannerNode.setPosition(STATE.currentPos.x, STATE.currentPos.y, STATE.currentPos.z);
+      if (!STATE.active) return;
+      if (STATE.currentLayer.includes('Epidermis')) playSoundEffect(3200, 'triangle', 0.05, 0.15);
+      else if (STATE.currentLayer.includes('Subcutaneous')) playSoundEffect(1400, 'sine', 0.08, 0.2);
+      else if (STATE.currentLayer.includes('Muscle')) playSoundEffect(450, 'sawtooth', 0.09, 0.25);
+      else if (STATE.currentLayer.includes('Cortical Bone')) playSoundEffect(1800, 'square', 0.04, 0.3);
+    }
+
+    // --- 7. ULTRA-HIGH REALISM 3D BABYLON.JS ENGINE & PROCEDURAL TEXTURES ---
+    const canvas = document.getElementById("renderCanvas");
+    
+    const engine = new BABYLON.Engine(canvas, true, {
+      antialias: true,
+      adaptToDeviceRatio: true,
+      preserveDrawingBuffer: true,
+      stencil: true
+    });
+    engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+
+    // Native Babylon.js Dynamic Texture Generators
+    function createFatDynamicTexture(scene) {
+      const tex = new BABYLON.DynamicTexture("fatTex", { width: 1024, height: 1024 }, scene, true);
+      const ctx = tex.getContext();
+      ctx.fillStyle = "#eab308";
+      ctx.fillRect(0, 0, 1024, 1024);
+      for (let i = 0; i < 800; i++) {
+        ctx.beginPath();
+        ctx.arc(Math.random() * 1024, Math.random() * 1024, 8 + Math.random() * 16, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(234, 179, 8, 0.4)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(180, 120, 10, 0.3)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      tex.update();
+      return tex;
+    }
+
+    function createMuscleDynamicTexture(scene) {
+      const tex = new BABYLON.DynamicTexture("muscleTex", { width: 1024, height: 1024 }, scene, true);
+      const ctx = tex.getContext();
+      ctx.fillStyle = "#7f1d1d";
+      ctx.fillRect(0, 0, 1024, 1024);
+      ctx.strokeStyle = "rgba(153, 27, 27, 0.6)";
+      ctx.lineWidth = 3;
+      for (let y = 0; y < 1024; y += 8) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + (Math.random() * 4 - 2));
+        ctx.lineTo(1024, y + (Math.random() * 4 - 2));
+        ctx.stroke();
+      }
+      tex.update();
+      return tex;
+    }
+
+    // High Realism Organic Bone Procedural Texture
+    function createBoneDynamicTexture(scene) {
+      const tex = new BABYLON.DynamicTexture("realisticBoneTex", { width: 1024, height: 1024 }, scene, true);
+      const ctx = tex.getContext();
+      
+      // Ivory base color
+      ctx.fillStyle = "#f4efe0";
+      ctx.fillRect(0, 0, 1024, 1024);
+      
+      // Osteon circles / microscopic vascular canals
+      for (let i = 0; i < 1200; i++) {
+        const x = Math.random() * 1024;
+        const y = Math.random() * 1024;
+        const r = 2 + Math.random() * 5;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(180, 160, 130, 0.35)";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(90, 70, 50, 0.5)";
+        ctx.fill();
+      }
+
+      // Periosteum linear nutrient striations
+      ctx.strokeStyle = "rgba(140, 110, 80, 0.18)";
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 300; i++) {
+        const startX = Math.random() * 1024;
+        ctx.beginPath();
+        ctx.moveTo(startX, 0);
+        ctx.lineTo(startX + (Math.random() * 60 - 30), 1024);
+        ctx.stroke();
+      }
+      
+      tex.update();
+      return tex;
+    }
+
+    const createScene = () => {
+      const scene = new BABYLON.Scene(engine);
+      scene.clearColor = new BABYLON.Color4(0.02, 0.03, 0.06, 1);
+
+      // High Precision Endoscopic Camera
+      const camera = new BABYLON.ArcRotateCamera("EndoCam", -Math.PI / 2, Math.PI / 3.4, 6.2, new BABYLON.Vector3(0, 0.2, 0), scene);
+      camera.attachControl(canvas, true);
+      camera.lowerRadiusLimit = 2.0;
+      camera.upperRadiusLimit = 10.0;
+      camera.wheelPrecision = 35;
+
+      // Realistic Surgical Studio Lighting
+      const surgicalSpot = new BABYLON.SpotLight("SurgicalSpot", new BABYLON.Vector3(0, 7, 0.5), new BABYLON.Vector3(0, -1, -0.1), Math.PI / 3, 2, scene);
+      surgicalSpot.intensity = 4.5;
+      surgicalSpot.diffuse = new BABYLON.Color3(0.98, 0.99, 1.0);
+
+      const fillLight = new BABYLON.DirectionalLight("FillLight", new BABYLON.Vector3(-1, -2, -1), scene);
+      fillLight.intensity = 0.9;
+      fillLight.diffuse = new BABYLON.Color3(0.5, 0.7, 0.9);
+
+      const ambientHemi = new BABYLON.HemisphericLight("Hemi", new BABYLON.Vector3(0, 1, 0), scene);
+      ambientHemi.intensity = 0.5;
+      ambientHemi.groundColor = new BABYLON.Color3(0.15, 0.05, 0.05);
+
+      // Dynamic Incision Texture Canvas
+      const incisionCanvas = document.createElement("canvas");
+      incisionCanvas.width = 2048;
+      incisionCanvas.height = 2048;
+      const incisionCtx = incisionCanvas.getContext("2d");
+      incisionCtx.fillStyle = "#d4a389";
+      incisionCtx.fillRect(0, 0, 2048, 2048);
+
+      const dynamicIncisionTexture = new BABYLON.DynamicTexture("incisionTexture", incisionCanvas, scene, true);
+
+      // --- ANATOMICAL TARGET BED ---
+      
+      // 1. Epidermis (Skin Layer)
+      const skinMesh = BABYLON.MeshBuilder.CreateBox("SkinLayer", { width: 5.2, height: 0.2, depth: 3.8 }, scene);
+      skinMesh.position.y = 0.6;
+      
+      const skinMat = new BABYLON.PBRMaterial("skinMat", scene);
+      skinMat.albedoTexture = dynamicIncisionTexture;
+      skinMat.roughness = 0.55;
+      skinMat.metallic = 0.0;
+      skinMat.subSurface.isSubsurfaceEnabled = true;
+      skinMat.subSurface.tintColor = new BABYLON.Color3(0.9, 0.3, 0.25);
+      skinMat.subSurface.translucencyIntensity = 0.4;
+      skinMesh.material = skinMat;
+
+      // 2. Subcutaneous Adipose Fat Layer
+      const fatMesh = BABYLON.MeshBuilder.CreateBox("FatLayer", { width: 5.0, height: 0.32, depth: 3.6 }, scene);
+      fatMesh.position.y = 0.34;
+      
+      const fatMat = new BABYLON.PBRMaterial("fatMat", scene);
+      fatMat.albedoTexture = createFatDynamicTexture(scene);
+      fatMat.roughness = 0.35;
+      fatMat.metallic = 0.05;
+      fatMesh.material = fatMat;
+
+      // 3. Muscle Bed & Fascia Sheath
+      const muscleMesh = BABYLON.MeshBuilder.CreateBox("MuscleLayer", { width: 4.8, height: 0.42, depth: 3.4 }, scene);
+      muscleMesh.position.y = -0.03;
+      
+      const muscleMat = new BABYLON.PBRMaterial("muscleMat", scene);
+      muscleMat.albedoTexture = createMuscleDynamicTexture(scene);
+      muscleMat.roughness = 0.25;
+      muscleMat.metallic = 0.1;
+      muscleMesh.material = muscleMat;
+
+      // 4. REALISTIC FEMUR BONE GEOMETRY & MATERIAL
+      const boneRoot = new BABYLON.TransformNode("BoneRoot", scene);
+      boneRoot.position.y = -0.45;
+
+      // Organic curved femoral shaft path
+      const path = [];
+      for (let i = -2.3; i <= 2.3; i += 0.2) {
+        const curveY = Math.sin((i / 2.3) * Math.PI) * 0.08;
+        path.push(new BABYLON.Vector3(i, curveY, 0));
+      }
+      
+      const shaft = BABYLON.MeshBuilder.CreateTube("BoneShaft", {
+        path: path,
+        radius: 0.38,
+        tessellation: 36,
+        radiusFunction: (i, distance) => {
+          // Anatomical flare at proximal/distal ends
+          const norm = Math.abs((i / 23) - 0.5) * 2;
+          return 0.36 + Math.pow(norm, 3.5) * 0.35;
+        }
+      }, scene);
+      shaft.parent = boneRoot;
+
+      // Femoral Head & Greater Trochanter (Left / Proximal)
+      const femoralNeck = BABYLON.MeshBuilder.CreateCylinder("FemoralNeck", { diameterTop: 0.45, diameterBottom: 0.55, height: 0.8 }, scene);
+      femoralNeck.rotation.z = Math.PI / 4;
+      femoralNeck.position.set(-2.2, 0.3, 0);
+      femoralNeck.parent = boneRoot;
+
+      const femoralHead = BABYLON.MeshBuilder.CreateSphere("FemoralHead", { diameterX: 0.95, diameterY: 0.9, diameterZ: 0.9 }, scene);
+      femoralHead.position.set(-2.6, 0.7, 0);
+      femoralHead.parent = boneRoot;
+
+      const trochanter = BABYLON.MeshBuilder.CreateSphere("Trochanter", { diameterX: 0.8, diameterY: 0.9, diameterZ: 0.7 }, scene);
+      trochanter.position.set(-2.2, 0.15, -0.25);
+      trochanter.parent = boneRoot;
+
+      // Femoral Condyles (Right / Distal Knee Joint)
+      const condyleL = BABYLON.MeshBuilder.CreateSphere("CondyleL", { diameterX: 0.85, diameterY: 0.85, diameterZ: 0.75 }, scene);
+      condyleL.position.set(2.2, -0.05, 0.3);
+      condyleL.parent = boneRoot;
+
+      const condyleR = BABYLON.MeshBuilder.CreateSphere("CondyleR", { diameterX: 0.85, diameterY: 0.85, diameterZ: 0.75 }, scene);
+      condyleR.position.set(2.2, -0.05, -0.3);
+      condyleR.parent = boneRoot;
+
+      const boneMat = new BABYLON.PBRMaterial("boneMat", scene);
+      boneMat.albedoTexture = createBoneDynamicTexture(scene);
+      boneMat.bumpTexture = new BABYLON.NoiseProceduralTexture("boneNoise", 512, scene);
+      boneMat.bumpStrength = 0.15;
+      boneMat.roughness = 0.32;
+      boneMat.metallic = 0.05;
+
+      shaft.material = boneMat;
+      femoralNeck.material = boneMat;
+      femoralHead.material = boneMat;
+      trochanter.material = boneMat;
+      condyleL.material = boneMat;
+      condyleR.material = boneMat;
+
+      // --- PARTICLE SYSTEM ENGINE (TISSUE TEARING & BONE SAW DUST) ---
+      
+      // Tissue/Blood Tearing Particles
+      const tissueParticles = new BABYLON.ParticleSystem("tissueParticles", 800, scene);
+      tissueParticles.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", scene);
+      tissueParticles.color1 = new BABYLON.Color4(0.8, 0.05, 0.05, 0.9);
+      tissueParticles.color2 = new BABYLON.Color4(0.4, 0.0, 0.0, 0.6);
+      tissueParticles.colorDead = new BABYLON.Color4(0.1, 0, 0, 0);
+      tissueParticles.minSize = 0.02;
+      tissueParticles.maxSize = 0.08;
+      tissueParticles.minLifeTime = 0.15;
+      tissueParticles.maxLifeTime = 0.4;
+      tissueParticles.emitRate = 0;
+      tissueParticles.gravity = new BABYLON.Vector3(0, -9.8, 0);
+      tissueParticles.direction1 = new BABYLON.Vector3(-1, 2, -1);
+      tissueParticles.direction2 = new BABYLON.Vector3(1, 3, 1);
+      tissueParticles.start();
+
+      // White Cortical Bone Saw Dust Particles
+      const boneDustParticles = new BABYLON.ParticleSystem("boneDustParticles", 1200, scene);
+      boneDustParticles.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", scene);
+      boneDustParticles.color1 = new BABYLON.Color4(0.95, 0.93, 0.85, 1.0);
+      boneDustParticles.color2 = new BABYLON.Color4(0.85, 0.82, 0.72, 0.8);
+      boneDustParticles.colorDead = new BABYLON.Color4(0.9, 0.9, 0.9, 0);
+      boneDustParticles.minSize = 0.015;
+      boneDustParticles.maxSize = 0.045;
+      boneDustParticles.minLifeTime = 0.2;
+      boneDustParticles.maxLifeTime = 0.6;
+      boneDustParticles.emitRate = 0;
+      boneDustParticles.gravity = new BABYLON.Vector3(0, -6.0, 0);
+      boneDustParticles.direction1 = new BABYLON.Vector3(-2, 4, -2);
+      boneDustParticles.direction2 = new BABYLON.Vector3(2, 5, 2);
+      boneDustParticles.start();
+
+      // --- HIGH REALISM MODULAR SURGICAL INSTRUMENT ASSEMBLY ---
+      
+      const createEndEffector = (name, isGhost = false) => {
+        const root = new BABYLON.TransformNode(name + "_Root", scene);
+
+        // Common Main Shaft
+        const handle = BABYLON.MeshBuilder.CreateBox(name + "_Handle", { width: 0.05, height: 1.1, depth: 0.14 }, scene);
+        handle.position.y = 0.65;
+        handle.parent = root;
+
+        const neck = BABYLON.MeshBuilder.CreateCylinder(name + "_Neck", { diameterTop: 0.04, diameterBottom: 0.02, height: 0.25 }, scene);
+        neck.position.y = 0.12;
+        neck.parent = root;
+
+        // Tool 1: Scalpel Blade
+        const bladeShape = [
+          new BABYLON.Vector3(0, 0.02, 0.06),
+          new BABYLON.Vector3(0, -0.15, 0.04),
+          new BABYLON.Vector3(0, -0.26, 0.0),
+          new BABYLON.Vector3(0, -0.18, -0.05),
+          new BABYLON.Vector3(0, 0.02, -0.05)
+        ];
+        const scalpelMesh = BABYLON.MeshBuilder.CreatePolygon(name + "_ScalpelBlade", { shape: bladeShape, depth: 0.006 }, scene);
+        scalpelMesh.rotation.x = -Math.PI / 2;
+        scalpelMesh.rotation.y = Math.PI / 2;
+        scalpelMesh.position.y = -0.01;
+        scalpelMesh.parent = root;
+
+        // Tool 2: Electrocautery Tip
+        const cauterizerMesh = BABYLON.MeshBuilder.CreateCylinder(name + "_CauterTip", { diameterTop: 0.02, diameterBottom: 0.003, height: 0.3 }, scene);
+        cauterizerMesh.position.y = -0.12;
+        cauterizerMesh.parent = root;
+
+        // Tool 3: Oscillating Bone Saw Blade
+        const sawGroup = new BABYLON.TransformNode(name + "_SawGroup", scene);
+        sawGroup.parent = root;
+        const sawBlade = BABYLON.MeshBuilder.CreateBox(name + "_SawBlade", { width: 0.008, height: 0.35, depth: 0.16 }, scene);
+        sawBlade.position.y = -0.12;
+        sawBlade.parent = sawGroup;
+        const sawTeeth = BABYLON.MeshBuilder.CreateCylinder(name + "_Teeth", { diameter: 0.17, height: 0.008, tessellation: 12 }, scene);
+        sawTeeth.rotation.z = Math.PI / 2;
+        sawTeeth.position.y = -0.28;
+        sawTeeth.parent = sawGroup;
+
+        // Tool 4: Suction Nozzle
+        const suctionMesh = BABYLON.MeshBuilder.CreateCylinder(name + "_SuctionTip", { diameterTop: 0.035, diameterBottom: 0.03, height: 0.38 }, scene);
+        suctionMesh.position.y = -0.15;
+        suctionMesh.parent = root;
+
+        const metallicMat = new BABYLON.PBRMaterial(name + "_MetalMat", scene);
+        metallicMat.albedoColor = new BABYLON.Color3(0.85, 0.88, 0.92);
+        metallicMat.metallic = 0.95;
+        metallicMat.roughness = 0.15;
+
+        const goldTipMat = new BABYLON.PBRMaterial(name + "_GoldTipMat", scene);
+        goldTipMat.albedoColor = new BABYLON.Color3(0.9, 0.7, 0.2);
+        goldTipMat.metallic = 0.9;
+        goldTipMat.roughness = 0.2;
+
+        if (!isGhost) {
+          handle.material = metallicMat;
+          neck.material = metallicMat;
+          scalpelMesh.material = metallicMat;
+          cauterizerMesh.material = goldTipMat;
+          sawBlade.material = metallicMat;
+          sawTeeth.material = metallicMat;
+          suctionMesh.material = metallicMat;
+        } else {
+          const ghostMat = new BABYLON.StandardMaterial(name + "_GhostMat", scene);
+          ghostMat.diffuseColor = new BABYLON.Color3(0.1, 0.8, 1);
+          ghostMat.emissiveColor = new BABYLON.Color3(0, 0.6, 0.95);
+          ghostMat.alpha = 0.45;
+          handle.material = ghostMat;
+          neck.material = ghostMat;
+          scalpelMesh.material = ghostMat;
+          cauterizerMesh.material = ghostMat;
+          sawBlade.material = ghostMat;
+          sawTeeth.material = ghostMat;
+          suctionMesh.material = ghostMat;
+        }
+
+        const updateVisibility = (toolType) => {
+          scalpelMesh.setEnabled(toolType === 'scalpel');
+          cauterizerMesh.setEnabled(toolType === 'cauterizer');
+          sawGroup.setEnabled(toolType === 'bonesaw');
+          suctionMesh.setEnabled(toolType === 'suction');
+        };
+
+        return { root, updateVisibility, sawGroup };
+      };
+
+      const primaryTool = createEndEffector("PrimaryTool", false);
+      const ghostTool = createEndEffector("GhostTool", true);
+      ghostTool.root.setEnabled(false);
+
+      window.updateActiveToolMesh = (toolName) => {
+        primaryTool.updateVisibility(toolName);
+        ghostTool.updateVisibility(toolName);
+      };
+      window.updateActiveToolMesh(STATE.tool);
+
+      const pipeline = new BABYLON.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
+      pipeline.fxaaEnabled = true;
+      pipeline.bloomEnabled = true;
+      pipeline.bloomThreshold = 0.85;
+      pipeline.bloomWeight = 0.25;
+
+      // RENDER LOOP & REAL-TIME PHYSICS / ANATOMY INTERACTION
+      scene.registerBeforeRender(() => {
+        // Dynamic Layer Detection
+        const rawY = STATE.targetPos.y;
+        let detectedLayer = 'Air Space';
+        if (rawY > 0.5) detectedLayer = 'Air Space';
+        else if (rawY > 0.32) detectedLayer = 'Epidermis Layer';
+        else if (rawY > 0.12) detectedLayer = 'Subcutaneous Fat';
+        else if (rawY > -0.22) detectedLayer = 'Muscle Bed';
+        else detectedLayer = 'Cortical Bone';
+
+        STATE.currentLayer = detectedLayer;
+
+        // AUTO SWITCH TOOL DEPENDING ON WHICH TISSUE PART IS BEING CUT
+        autoSwitchToolForLayer(STATE.currentLayer);
+
+        // BONE CUTTING DYNAMIC SNAP CONSTRAINT (STAYS STABLE ON BONE SURFACE)
+        if (STATE.currentLayer === 'Cortical Bone') {
+          // Constrain tool Y to stay locked on top surface of bone shaft (r ≈ 0.38 at y=-0.45 => y_surface ≈ -0.07)
+          const targetBoneY = -0.12;
+          STATE.targetPos.y = targetBoneY; 
+          // Constrain Z depth wandering while cutting hard cortical bone
+          STATE.targetPos.z = Math.max(-0.35, Math.min(0.35, STATE.targetPos.z));
+        }
+
+        if (!STATE.isLocked) {
+          STATE.currentPos.x += (STATE.targetPos.x - STATE.currentPos.x) * 0.22;
+          STATE.currentPos.y += (STATE.targetPos.y - STATE.currentPos.y) * 0.22;
+          STATE.currentPos.z += (STATE.targetPos.z - STATE.currentPos.z) * 0.22;
+
+          primaryTool.root.position.set(STATE.currentPos.x, STATE.currentPos.y, STATE.currentPos.z);
+        }
+
+        // Particle Emitter positioning
+        const tipPos = primaryTool.root.position.clone();
+        tipPos.y -= 0.25;
+        tissueParticles.emitter = tipPos;
+        boneDustParticles.emitter = tipPos;
+
+        // Oscillating Bone Saw Blade Vibration Animation
+        if (STATE.tool === 'bonesaw' && STATE.active) {
+          primaryTool.sawGroup.rotation.y = (Math.random() - 0.5) * 0.15;
+        } else {
+          primaryTool.sawGroup.rotation.y = 0;
+        }
+
+        document.getElementById('hud-tool').innerText = STATE.tool.toUpperCase() + (STATE.tool==='scalpel'?' #10':'');
+        document.getElementById('hud-layer').innerText = STATE.currentLayer;
+        document.getElementById('hud-force').innerText = STATE.force.toFixed(2) + ' N';
+
+        // CUTTING & TEARING ANIMATION EFFECTS
+        if (STATE.active) {
+          const u = ((primaryTool.root.position.x + 2.6) / 5.2) * 2048;
+          const v = ((primaryTool.root.position.z + 1.9) / 3.8) * 2048;
+          
+          if (STATE.currentLayer.includes('Epidermis') || STATE.currentLayer.includes('Subcutaneous')) {
+            tissueParticles.emitRate = 180;
+            boneDustParticles.emitRate = 0;
+
+            if (STATE.tool === 'scalpel') {
+              incisionCtx.fillStyle = "#5c0808";
+              incisionCtx.beginPath();
+              incisionCtx.arc(u, v, 14, 0, Math.PI * 2);
+              incisionCtx.fill();
+            } else if (STATE.tool === 'cauterizer') {
+              incisionCtx.fillStyle = "#18181b";
+              incisionCtx.beginPath();
+              incisionCtx.arc(u, v, 18, 0, Math.PI * 2);
+              incisionCtx.fill();
+            }
+            dynamicIncisionTexture.update(false);
+
+          } else if (STATE.currentLayer.includes('Muscle')) {
+            // Intense muscle tearing particles
+            tissueParticles.emitRate = 350;
+            boneDustParticles.emitRate = 0;
+
+            incisionCtx.fillStyle = "#3b0202";
+            incisionCtx.beginPath();
+            incisionCtx.arc(u, v, 22, 0, Math.PI * 2);
+            incisionCtx.fill();
+            dynamicIncisionTexture.update(false);
+
+          } else if (STATE.currentLayer.includes('Cortical Bone')) {
+            // White Bone Dust Spray for bone cutting saw
+            tissueParticles.emitRate = 40;
+            boneDustParticles.emitRate = 450;
+          } else {
+            tissueParticles.emitRate = 0;
+            boneDustParticles.emitRate = 0;
+          }
+        } else {
+          tissueParticles.emitRate = 0;
+          boneDustParticles.emitRate = 0;
+        }
+
+        if (STATE.isCrisisActive) {
+          ghostTool.root.setEnabled(true);
+          ghostTool.root.position.set(
+            STATE.targetPos.x + (STATE.targetPos.x - STATE.currentPos.x) * 1.8,
+            STATE.targetPos.y + (STATE.targetPos.y - STATE.currentPos.y) * 1.8,
+            STATE.targetPos.z + (STATE.targetPos.z - STATE.currentPos.z) * 1.8
+          );
+        } else {
+          ghostTool.root.setEnabled(false);
+        }
+      });
+
+      return scene;
+    };
+
+    const scene = createScene();
+
+    engine.runRenderLoop(() => {
+      scene.render();
+    });
+
+    window.addEventListener("resize", () => {
+      engine.resize();
+    });
+  </script>
+</body>
+</html>
