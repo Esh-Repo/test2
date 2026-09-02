@@ -33,12 +33,6 @@
       box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     }
 
-    .glass-panel-accent {
-      background: rgba(16, 24, 45, 0.85);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(56, 189, 248, 0.2);
-    }
-
     .viewport-container {
       position: relative;
     }
@@ -65,7 +59,6 @@
       outline: none;
     }
 
-    /* Custom scrollbar */
     ::-webkit-scrollbar {
       width: 4px;
     }
@@ -499,56 +492,40 @@
     });
     engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
 
-    // Helpers to generate realistic dynamic procedural textures
-    function createSkinTextureCanvas() {
-      const c = document.createElement("canvas");
-      c.width = 1024; c.height = 1024;
-      const ctx = c.getContext("2d");
-      ctx.fillStyle = "#d4a389";
+    // Native Babylon.js Dynamic Texture Generators
+    function createFatDynamicTexture(scene) {
+      const tex = new BABYLON.DynamicTexture("fatTex", { width: 1024, height: 1024 }, scene, true);
+      const ctx = tex.getContext();
+      ctx.fillStyle = "#eab308";
       ctx.fillRect(0, 0, 1024, 1024);
-      // Pores & micro vascular patterns
-      for (let i = 0; i < 4000; i++) {
-        ctx.fillStyle = Math.random() > 0.5 ? "rgba(180, 110, 90, 0.15)" : "rgba(255, 230, 210, 0.12)";
-        ctx.fillRect(Math.random()*1024, Math.random()*1024, 2, 2);
-      }
-      return c;
-    }
-
-    function createFatTextureCanvas() {
-      const c = document.createElement("canvas");
-      c.width = 1024; c.height = 1024;
-      const ctx = c.getContext("2d");
-      ctx.fillStyle = "#eab308"; // Golden yellow adipose
-      ctx.fillRect(0, 0, 1024, 1024);
-      // Adipose lobules pattern
       for (let i = 0; i < 800; i++) {
         ctx.beginPath();
-        ctx.arc(Math.random()*1024, Math.random()*1024, 8 + Math.random()*16, 0, Math.PI * 2);
+        ctx.arc(Math.random() * 1024, Math.random() * 1024, 8 + Math.random() * 16, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(234, 179, 8, 0.4)";
         ctx.fill();
         ctx.strokeStyle = "rgba(180, 120, 10, 0.3)";
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-      return c;
+      tex.update();
+      return tex;
     }
 
-    function createMuscleTextureCanvas() {
-      const c = document.createElement("canvas");
-      c.width = 1024; c.height = 1024;
-      const ctx = c.getContext("2d");
-      ctx.fillStyle = "#7f1d1d"; // Deep crimson muscle bed
+    function createMuscleDynamicTexture(scene) {
+      const tex = new BABYLON.DynamicTexture("muscleTex", { width: 1024, height: 1024 }, scene, true);
+      const ctx = tex.getContext();
+      ctx.fillStyle = "#7f1d1d";
       ctx.fillRect(0, 0, 1024, 1024);
-      // Muscle striation lines
       ctx.strokeStyle = "rgba(153, 27, 27, 0.6)";
       ctx.lineWidth = 3;
       for (let y = 0; y < 1024; y += 8) {
         ctx.beginPath();
-        ctx.moveTo(0, y + (Math.random()*4 - 2));
-        ctx.lineTo(1024, y + (Math.random()*4 - 2));
+        ctx.moveTo(0, y + (Math.random() * 4 - 2));
+        ctx.lineTo(1024, y + (Math.random() * 4 - 2));
         ctx.stroke();
       }
-      return c;
+      tex.update();
+      return tex;
     }
 
     const createScene = () => {
@@ -575,7 +552,7 @@
       ambientHemi.intensity = 0.5;
       ambientHemi.groundColor = new BABYLON.Color3(0.15, 0.05, 0.05);
 
-      // Incision Canvas Dynamic Texture
+      // Dynamic Incision Texture Canvas
       const incisionCanvas = document.createElement("canvas");
       incisionCanvas.width = 2048;
       incisionCanvas.height = 2048;
@@ -585,9 +562,9 @@
 
       const dynamicIncisionTexture = new BABYLON.DynamicTexture("incisionTexture", incisionCanvas, scene, true);
 
-      // --- ANATOMICAL TARGET BED (REALISTIC GEOMETRY) ---
+      // --- ANATOMICAL TARGET BED ---
       
-      // 1. Epidermis (Skin Layer with Subsurface Scattering)
+      // 1. Epidermis (Skin Layer)
       const skinMesh = BABYLON.MeshBuilder.CreateBox("SkinLayer", { width: 5.2, height: 0.2, depth: 3.8 }, scene);
       skinMesh.position.y = 0.6;
       
@@ -605,8 +582,7 @@
       fatMesh.position.y = 0.34;
       
       const fatMat = new BABYLON.PBRMaterial("fatMat", scene);
-      const fatTexCanvas = createFatTextureCanvas();
-      fatMat.albedoTexture = new BABYLON.CanvasTexture("fatTex", fatTexCanvas, scene);
+      fatMat.albedoTexture = createFatDynamicTexture(scene);
       fatMat.roughness = 0.35;
       fatMat.metallic = 0.05;
       fatMesh.material = fatMat;
@@ -616,13 +592,12 @@
       muscleMesh.position.y = -0.03;
       
       const muscleMat = new BABYLON.PBRMaterial("muscleMat", scene);
-      const muscleTexCanvas = createMuscleTextureCanvas();
-      muscleMat.albedoTexture = new BABYLON.CanvasTexture("muscleTex", muscleTexCanvas, scene);
+      muscleMat.albedoTexture = createMuscleDynamicTexture(scene);
       muscleMat.roughness = 0.25;
       muscleMat.metallic = 0.1;
       muscleMesh.material = muscleMat;
 
-      // 4. Realistic Femoral/Humeral Bone Geometry (Anatomical Bone Model)
+      // 4. Realistic Femoral Bone Geometry
       const boneRoot = new BABYLON.TransformNode("BoneRoot", scene);
       boneRoot.position.y = -0.45;
 
@@ -639,28 +614,25 @@
       epiphysisRight.parent = boneRoot;
 
       const boneMat = new BABYLON.PBRMaterial("boneMat", scene);
-      boneMat.albedoColor = new BABYLON.Color3(0.94, 0.92, 0.84); // Cortical Bone Ivory
+      boneMat.albedoColor = new BABYLON.Color3(0.94, 0.92, 0.84);
       boneMat.roughness = 0.28;
       boneMat.metallic = 0.15;
       shaft.material = boneMat;
       epiphysisLeft.material = boneMat;
       epiphysisRight.material = boneMat;
 
-      // --- HIGH REALISM SURGICAL INSTRUMENT (SCALPEL #10 MODEL) ---
+      // --- HIGH REALISM SURGICAL INSTRUMENT (SCALPEL #10) ---
       const buildScalpelMesh = (name, isGhost = false) => {
         const root = new BABYLON.TransformNode(name + "_Root", scene);
 
-        // Ergonomic Stainless Steel Handle with Flat Grip Profile
         const handle = BABYLON.MeshBuilder.CreateBox(name + "_Handle", { width: 0.04, height: 1.1, depth: 0.14 }, scene);
         handle.position.y = 0.65;
         handle.parent = root;
 
-        // Blade Locking Collar / Tapered Neck
         const neck = BABYLON.MeshBuilder.CreateCylinder(name + "_Neck", { diameterTop: 0.035, diameterBottom: 0.018, height: 0.25 }, scene);
         neck.position.y = 0.12;
         neck.parent = root;
 
-        // Curved Scalpel Blade Tip (#10 Shape) using Earcut Triangulation
         const bladeShape = [
           new BABYLON.Vector3(0, 0.02, 0.06),
           new BABYLON.Vector3(0, -0.15, 0.04),
@@ -672,7 +644,7 @@
         const blade = BABYLON.MeshBuilder.CreatePolygon(name + "_Blade", { shape: bladeShape, depth: 0.006 }, scene);
         blade.rotation.x = -Math.PI / 2;
         blade.rotation.y = Math.PI / 2;
-        blade.position.y = -0.01; // Perfectly aligned tip origin
+        blade.position.y = -0.01;
         blade.parent = root;
 
         if (!isGhost) {
@@ -705,17 +677,15 @@
       const ghostRoot = buildScalpelMesh("AIGhostScalpel", true);
       ghostRoot.setEnabled(false);
 
-      // Post-Processing Rendering Pipeline (Bloom & FXAA Anti-Aliasing)
       const pipeline = new BABYLON.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
       pipeline.fxaaEnabled = true;
       pipeline.bloomEnabled = true;
       pipeline.bloomThreshold = 0.85;
       pipeline.bloomWeight = 0.25;
 
-      // --- REAL-TIME SCALPEL MOTION & DYNAMIC TISSUE INCISION ---
+      // Render loop animation
       scene.registerBeforeRender(() => {
         if (!STATE.isLocked) {
-          // Smooth interpolation for master remote movement
           STATE.currentPos.x += (STATE.targetPos.x - STATE.currentPos.x) * 0.22;
           STATE.currentPos.y += (STATE.targetPos.y - STATE.currentPos.y) * 0.22;
           STATE.currentPos.z += (STATE.targetPos.z - STATE.currentPos.z) * 0.22;
@@ -734,23 +704,22 @@
         document.getElementById('hud-layer').innerText = STATE.currentLayer;
         document.getElementById('hud-force').innerText = STATE.force.toFixed(2) + ' N';
 
-        // Perform dynamic incision carving on tissue canvas texture
         if (STATE.active && (STATE.currentLayer.includes('Epidermis') || STATE.currentLayer.includes('Subcutaneous') || STATE.currentLayer.includes('Muscle'))) {
           const u = ((scalpelRoot.position.x + 2.6) / 5.2) * 2048;
           const v = ((scalpelRoot.position.z + 1.9) / 3.8) * 2048;
           
           if (STATE.tool === 'scalpel') {
-            incisionCtx.fillStyle = "#5c0808"; // Deep incision cut color
+            incisionCtx.fillStyle = "#5c0808";
             incisionCtx.beginPath();
             incisionCtx.arc(u, v, 14, 0, Math.PI * 2);
             incisionCtx.fill();
           } else if (STATE.tool === 'cauterizer') {
-            incisionCtx.fillStyle = "#18181b"; // Thermal char mark
+            incisionCtx.fillStyle = "#18181b";
             incisionCtx.beginPath();
             incisionCtx.arc(u, v, 18, 0, Math.PI * 2);
             incisionCtx.fill();
           } else if (STATE.tool === 'suction') {
-            incisionCtx.fillStyle = "#d4a389"; // Clean wound site
+            incisionCtx.fillStyle = "#d4a389";
             incisionCtx.beginPath();
             incisionCtx.arc(u, v, 32, 0, Math.PI * 2);
             incisionCtx.fill();
@@ -759,7 +728,6 @@
           dynamicIncisionTexture.update(false);
         }
 
-        // Predictive AI Ghost visualization during latency crisis
         if (STATE.isCrisisActive) {
           ghostRoot.setEnabled(true);
           ghostRoot.position.set(
