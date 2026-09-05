@@ -372,7 +372,7 @@
     joystickManager.on('move', (evt, data) => {
       if (data && data.vector) {
         // Clamp and map joysticks X/Y values
-        STATE.pos.x = Math.max(-1, Math.min(1, data.vector.x));
+        STATE.pos.x = Math.max(-1, Math.min(1, -data.vector.x));
         STATE.pos.z = Math.max(-1, Math.min(1, data.vector.y));
         
         document.getElementById('pos-x-val').innerText = STATE.pos.x.toFixed(2);
